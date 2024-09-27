@@ -9,7 +9,7 @@ import MetaTrader5 as mt5
 import pandas
 from typing import Dict
 
-NUMBER_OF_CANDLES_USED = 50000
+NUMBER_OF_CANDLES_USED = 1000
 
 def initialize_mt5(settings: Dict[str, str]) -> None:
     if not mt5.initialize(login=int(settings['username']),server=settings['server'],password=settings['password']):
@@ -34,8 +34,7 @@ def collect_candlesticks(settings):
     for symbol in settings["symbols"]:
         candles = mt5.copy_rates_from_pos(symbol, mt5_timeframe, 1, NUMBER_OF_CANDLES_USED)
         if candles is not None:
-            df = pandas.DataFrame(candles)
-            print(df)
+            return pandas.DataFrame(candles)
         else:
             print(f"Failed to retrieve data for {symbol}")
 
