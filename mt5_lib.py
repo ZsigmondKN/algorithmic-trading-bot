@@ -6,10 +6,8 @@ Description: ...
 """
 
 import MetaTrader5 as mt5
-import pandas
+import pandas as pd
 from typing import Dict
-
-NUMBER_OF_CANDLES_USED = 1000
 
 def initialize_mt5(settings: Dict[str, str]) -> None:
     if not mt5.initialize(login=int(settings['username']),server=settings['server'],password=settings['password']):
@@ -28,15 +26,14 @@ def validate_and_initialise_symbols(settings: Dict[str, str]) -> None:
 
     print("All requested symbols successfully initialised!")
 
-def collect_candlesticks(settings):
-    mt5_timeframe = set_query_timeframe(timeframe=settings["timeframe"])
-
-    for symbol in settings["symbols"]:
-        candles = mt5.copy_rates_from_pos(symbol, mt5_timeframe, 1, NUMBER_OF_CANDLES_USED)
-        if candles is not None:
-            return pandas.DataFrame(candles)
-        else:
-            print(f"Failed to retrieve data for {symbol}")
+def collect_candlesticks(symbol: str, timeframe: str, number_of_candles: int) -> pd.DataFrame:
+    if number_of_candles > 50000:
+        raise ValueError("Cannot retrieve more than 50,000 candlesticks at once.")
+    candles = mt5.copy_rates_from_pos(symbol, set_query_timeframe(timeframe), 1, number_of_candles)
+    if candles is None:
+        raise RuntimeError(f"Failed to retrieve data for {symbol}")
+    
+    return pd.DataFrame(candles)
 
 def set_query_timeframe(timeframe: str):
     return getattr(mt5, f"TIMEFRAME_{timeframe}")

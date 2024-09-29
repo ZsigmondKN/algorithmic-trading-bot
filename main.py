@@ -11,6 +11,7 @@ import MetaTrader5 as mt5
 # Custom Libraries
 import mt5_lib
 import indicator_lib
+import ema_cross_strategy
 
 SETTINGS_FILE = "../trading_bot_personal_settings/personal_settings.json"
 
@@ -23,10 +24,11 @@ def start_up():
         settings = load_settings()
         mt5_lib.initialize_mt5(settings)
         mt5_lib.validate_and_initialise_symbols(settings)
-        ema_20 = indicator_lib.calc_custom_ema(mt5_lib.collect_candlesticks(settings), 20)
-        ema_50 = indicator_lib.calc_custom_ema(dataframe=ema_20, ema_size=50)
-        ema_200 = indicator_lib.calc_custom_ema(dataframe=ema_50, ema_size=200)
-        print(ema_200)
+        print("Starting strategies!")
+        for symbol in settings['symbols']:
+            dataframe = ema_cross_strategy.ema_cross_strategy(symbol, settings['timeframe'], 50, 200)
+            dataframe = dataframe[dataframe["ema_cross"] == True]
+            print(dataframe)
 
 if __name__ == '__main__':
     try:
