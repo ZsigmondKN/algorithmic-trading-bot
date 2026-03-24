@@ -18,4 +18,3 @@ A Python-based trading bot implementing an Exponential Moving Average (EMA) cros
 2. Install dependencies: `pip install -r requirements.txt`  
 3. Add your MT5 credentials in a `.env` file  
 4. Run: `python main.py`
----
