@@ -1,4 +1,3 @@
-import numpy as np
 import pandas as pd
 
 def calculate_ema(dataframe: pd.DataFrame, ema_period: int) -> pd.DataFrame:
