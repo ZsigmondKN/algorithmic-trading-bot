@@ -1,5 +1,7 @@
 # Trading Bot
 
+![Fire Simulation Demo](docs/images/ema_diagram.png)
+
 ## Overview
 A Python-based trading bot implementing an Exponential Moving Average (EMA) crossover strategy on MetaTrader5. It retrieves market data, computes indicators, and identifies potential buy/sell signals across selected currency pairs.
 

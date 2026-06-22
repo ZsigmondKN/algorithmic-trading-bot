@@ -1,39 +1,60 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Author: Zsigmond Kovacs-Nagy
 Description: ...
 """
 
+import logging
 import MetaTrader5 as mt5
 import pandas as pd
-from typing import Dict
 
-def initialize_mt5(settings: Dict[str, str]) -> None:
-    if not mt5.initialize(login=int(settings['username']),server=settings['server'],password=settings['password']):
+from config import MAXIMUM_MT5_CANDLE_COUNT_PER_REQUEST
+
+def login(settings: dict[str, str]) -> None:
+    account_username = settings['username']
+    account_server = settings['server']
+    account_password = settings['password']
+
+    # attempt to initialize MT5 with the provided credentials
+    login_success = mt5.initialize(
+        login=int(account_username), 
+        password=account_password, 
+        server=account_server
+    )
+
+    if not login_success:
         raise RuntimeError("Failed to initialize MT5 with the provided login credentials.")
-    print("Trading bot initialized!")
+    logging.info("Connection established to MT5.")
 
-def validate_and_initialise_symbols(settings: Dict[str, str]) -> None:
+def validate_and_initialise_symbols(settings: dict[str, str]) -> None:
     available_symbols = {symbol.name for symbol in mt5.symbols_get()}
 
     for symbol in settings['symbols']:
+        # validate if the symbol exists in the available set
         if symbol not in available_symbols:
             raise ValueError(f"Symbol '{symbol}' not found in this MT5 version. Update symbol name.")
+        # attempt to initialise the symbol
         if not mt5.symbol_select(symbol, True):
             raise RuntimeError(f"Failed to initialise symbol: {symbol}")
-        print(f"Initialised: {symbol}")
 
-    print("All requested symbols successfully initialised!")
+    logging.info("All requested symbols successfully initialised.")
 
 def collect_candlesticks(symbol: str, timeframe: str, number_of_candles: int) -> pd.DataFrame:
-    if number_of_candles > 50000:
-        raise ValueError("Cannot retrieve more than 50,000 candlesticks at once.")
-    candles = mt5.copy_rates_from_pos(symbol, set_query_timeframe(timeframe), 1, number_of_candles)
+    if number_of_candles > MAXIMUM_MT5_CANDLE_COUNT_PER_REQUEST:
+        raise ValueError(
+            f"Cannot retrieve more than {MAXIMUM_MT5_CANDLE_COUNT_PER_REQUEST} candlesticks at once."
+        )
+
+    try:
+        mt5_timeframe = getattr(mt5, f"TIMEFRAME_{timeframe}")
+    except AttributeError:
+        raise ValueError(f"Unsupported timeframe: {timeframe}")
+    
+    # Skip the current candle
+    initial_candle_index = 1
+    
+    candles = mt5.copy_rates_from_pos(symbol, mt5_timeframe, initial_candle_index, number_of_candles)
     if candles is None:
         raise RuntimeError(f"Failed to retrieve data for {symbol}")
     
+    # return as a DataFrame for easier manipulation
     return pd.DataFrame(candles)
-
-def set_query_timeframe(timeframe: str):
-    return getattr(mt5, f"TIMEFRAME_{timeframe}")

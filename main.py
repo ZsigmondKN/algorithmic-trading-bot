@@ -1,47 +1,48 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
 """
 Author: Zsigmond Kovacs-Nagy
-Description: ...Don't forget to look at the TA Lib if not already...
+Description: ...
 """
 
-import os
-from typing import Any, Dict
-from dotenv import load_dotenv
+import logging
 import MetaTrader5 as mt5
-# Custom Libraries
+
+import config
 import mt5_lib
-import ema_cross_strategy
-
-# Load environment variables from .env file
-load_dotenv()
-
-def load_settings() -> Dict[str, Any]:
-    """Load settings from environment variables"""
-    return {
-        'username': os.getenv('MT5_USERNAME'),
-        'password': os.getenv('MT5_PASSWORD'),
-        'server': os.getenv('MT5_SERVER'),
-        'mt5_pathway': os.getenv('MT5_PATHWAY'),
-        'symbols': os.getenv('MT5_SYMBOLS', 'USDJPY.a').split(','),
-        'timeframe': os.getenv('MT5_TIMEFRAME', 'M30')
-    }
+import ema_lib
     
 def start_up():
-        print("Trading bot starting up!")
-        settings = load_settings()
-        mt5_lib.initialize_mt5(settings)
+        # set up trading bot and symbols 
+        settings = config.load_settings()
+        mt5_lib.login(settings)
         mt5_lib.validate_and_initialise_symbols(settings)
-        print("Starting strategies!")
-        for symbol in settings['symbols']:
-            dataframe = ema_cross_strategy.ema_cross_strategy(symbol, settings['timeframe'], 50, 200)
-            dataframe = dataframe[dataframe["ema_cross"] == True]
-            print(dataframe)
+
+        ema_dataframe = ema_lib.create_ema_dataframe(
+            symbols = settings['symbols'], 
+            timeframe = settings['timeframe'], 
+            ema_period_one = 50, 
+            ema_period_two = 200, 
+            number_of_candles = 2000
+        )
+
+        # load symbol statistics
+        ema_lib.log_ema_crosses(
+            ema_dataframe = ema_dataframe,
+            settings = settings, 
+            ema_period_one = 50, 
+            ema_period_two = 200, 
+            number_of_candles = 5000
+        )
+
+        ema_lib.plot_ema_charts(
+            ema_dataframe,
+            ema_period_one=50,
+            ema_period_two=200,
+        )
 
 if __name__ == '__main__':
     try:
         start_up()
         mt5.shutdown()
     except Exception as e:
-        print(f"An error occured: {e}")
+        logging.error(f"An error occurred: {e}")
         mt5.shutdown()
