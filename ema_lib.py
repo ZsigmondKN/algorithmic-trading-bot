@@ -7,6 +7,7 @@ import logging
 import pandas as pd
 import matplotlib.pyplot as plt
 
+from config import EMA_WARMUP_MULTIPLIER
 import mt5_lib
 import ema_lib
 
@@ -34,6 +35,10 @@ def add_ema_cross_to_dataframe(
     # add EMA cross column to the dataframe, setting the first value to False
     dataframe['ema_cross'] = current_position != previous_position
     dataframe['ema_cross'].iat[0] = False
+
+    # calculate the warmup period for EMA and set the warmup values to False in the ema_cross column
+    warmup = max(ema_period_one, ema_period_two) * EMA_WARMUP_MULTIPLIER
+    dataframe.loc[: warmup - 1, "ema_cross"] = False
     return dataframe
 
 def create_ema_dataframe(
@@ -46,8 +51,10 @@ def create_ema_dataframe(
     ema_df = pd.DataFrame()
     # combine candlestick data for all symbols
     for symbol in symbols:
+        # collect symbol data and add symbol column
         symbol_df = mt5_lib.collect_candlesticks(symbol, timeframe, number_of_candles)
         symbol_df.insert(0, "symbol", symbol)
+
         # add EMA columns and EMA cross column to the dataframe
         symbol_df = ema_lib.add_ema_to_dataframe(symbol_df, ema_period_one)
         symbol_df = ema_lib.add_ema_to_dataframe(symbol_df, ema_period_two)

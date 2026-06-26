@@ -14,6 +14,7 @@ logging.basicConfig(
 )
 
 MAXIMUM_MT5_CANDLE_COUNT_PER_REQUEST = 50000
+EMA_WARMUP_MULTIPLIER = 1.5
 
 def load_settings() -> dict[str, any]:
     return {
