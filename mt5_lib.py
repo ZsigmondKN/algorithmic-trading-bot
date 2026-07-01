@@ -9,10 +9,10 @@ import pandas as pd
 
 from config import MAXIMUM_MT5_CANDLE_COUNT_PER_REQUEST
 
-def login(settings: dict[str, str]) -> None:
-    account_username = settings['username']
-    account_server = settings['server']
-    account_password = settings['password']
+def login(configs: dict[str, str]) -> None:
+    account_username = configs['username']
+    account_server = configs['server']
+    account_password = configs['password']
 
     # attempt to initialize MT5 with the provided credentials
     login_success = mt5.initialize(
@@ -25,10 +25,10 @@ def login(settings: dict[str, str]) -> None:
         raise RuntimeError("Failed to initialize MT5 with the provided login credentials.")
     logging.info("Connection established to MT5.")
 
-def validate_and_initialise_symbols(settings: dict[str, str]) -> None:
+def validate_and_initialise_symbols(symbol_configs: dict[str, str]) -> None:
     available_symbols = {symbol.name for symbol in mt5.symbols_get()}
 
-    for symbol in settings['symbols']:
+    for symbol in symbol_configs['symbols']:
         # validate if the symbol exists in the available set
         if symbol not in available_symbols:
             raise ValueError(f"Symbol '{symbol}' not found in this MT5 version. Update symbol name.")

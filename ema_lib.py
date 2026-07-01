@@ -9,7 +9,6 @@ import matplotlib.pyplot as plt
 
 from config import EMA_WARMUP_MULTIPLIER
 import mt5_lib
-import ema_lib
 
 def add_ema_to_dataframe(dataframe: pd.DataFrame, ema_period: int) -> pd.DataFrame:
     ema_column = f"ema_{ema_period}"
@@ -56,34 +55,25 @@ def create_ema_dataframe(
         symbol_df.insert(0, "symbol", symbol)
 
         # add EMA columns and EMA cross column to the dataframe
-        symbol_df = ema_lib.add_ema_to_dataframe(symbol_df, ema_period_one)
-        symbol_df = ema_lib.add_ema_to_dataframe(symbol_df, ema_period_two)
-        symbol_df = ema_lib.add_ema_cross_to_dataframe(symbol_df, ema_period_one, ema_period_two)
+        symbol_df = add_ema_to_dataframe(symbol_df, ema_period_one)
+        symbol_df = add_ema_to_dataframe(symbol_df, ema_period_two)
+        symbol_df = add_ema_cross_to_dataframe(symbol_df, ema_period_one, ema_period_two)
         ema_df = pd.concat([ema_df, symbol_df], ignore_index=True)
 
     return ema_df
 
-def log_ema_crosses(
-    ema_dataframe: pd.DataFrame,
-    settings: dict[str, str], 
-    ema_period_one: int,
-    ema_period_two: int,
-    number_of_candles: int
-) -> None:
-    logging.info(
-        f"Logging EMA crosses for the following symbols: {settings['symbols']}. " 
-        f"Given EMA periods: {ema_period_one} and {ema_period_two}. Number of candles: {number_of_candles}."
-    )
+def log_ema_crosses(ema_df: pd.DataFrame) -> None:
+    ema_df_cross = ema_df[ema_df["ema_cross"]]
 
-    cross_ema_df = ema_dataframe[ema_dataframe["ema_cross"]]
-    print(cross_ema_df)
+    logging.info(f"EMA crosses:")
+    print(ema_df_cross)
 
 def plot_ema_charts(
-    ema_dataframe: pd.DataFrame,
+    ema_df: pd.DataFrame,
     ema_period_one: int,
     ema_period_two: int,
 ) -> None:
-    for symbol, symbol_df in ema_dataframe.groupby("symbol"):
+    for symbol, symbol_df in ema_df.groupby("symbol"):
         plt.figure(figsize=(12, 6))
 
         plt.plot(
@@ -106,7 +96,6 @@ def plot_ema_charts(
 
         # mark EMA crosses
         cross_df = symbol_df[symbol_df["ema_cross"]]
-
         plt.scatter(
             x = cross_df.index,
             y = cross_df["close"],
@@ -122,3 +111,15 @@ def plot_ema_charts(
         plt.grid(True)
 
         plt.show()
+
+def generate_ema_report(symbol_configs: dict[str, str], strategy_configs: dict[str, str]):
+    ema_df = create_ema_dataframe(
+        symbol_configs["symbols"],
+        symbol_configs["timeframe"],
+        strategy_configs["ema_period_one"],
+        strategy_configs["ema_period_two"],
+        strategy_configs["number_of_candles"],
+    )
+
+    log_ema_crosses(ema_df)
+    plot_ema_charts(ema_df, strategy_configs["ema_period_one"], strategy_configs["ema_period_two"])

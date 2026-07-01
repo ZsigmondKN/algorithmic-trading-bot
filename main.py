@@ -11,38 +11,21 @@ import mt5_lib
 import ema_lib
     
 def start_up():
-        # set up trading bot and symbols 
-        settings = config.load_settings()
-        mt5_lib.login(settings)
-        mt5_lib.validate_and_initialise_symbols(settings)
+        mt5_configs = config.load_mt5_configs()
+        symbol_configs = config.load_symbol_configs()
+        strategy_configs = config.load_strategy_configs()
 
-        ema_dataframe = ema_lib.create_ema_dataframe(
-            symbols = settings['symbols'], 
-            timeframe = settings['timeframe'], 
-            ema_period_one = 50, 
-            ema_period_two = 200, 
-            number_of_candles = 2000
-        )
+        config.log_configs(mt5_configs, symbol_configs, strategy_configs)
 
-        # load symbol statistics
-        ema_lib.log_ema_crosses(
-            ema_dataframe = ema_dataframe,
-            settings = settings, 
-            ema_period_one = 50, 
-            ema_period_two = 200, 
-            number_of_candles = 5000
-        )
-
-        ema_lib.plot_ema_charts(
-            ema_dataframe,
-            ema_period_one=50,
-            ema_period_two=200,
-        )
+        mt5_lib.login(mt5_configs)
+        mt5_lib.validate_and_initialise_symbols(symbol_configs)
+        
+        ema_lib.generate_ema_report(symbol_configs, strategy_configs)
 
 if __name__ == '__main__':
     try:
         start_up()
         mt5.shutdown()
     except Exception as e:
-        logging.error(f"An error occurred: {e}")
+        logging.exception("Unhandled exception")
         mt5.shutdown()
