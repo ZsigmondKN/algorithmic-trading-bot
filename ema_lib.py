@@ -10,6 +10,13 @@ import matplotlib.pyplot as plt
 from config import EMA_WARMUP_MULTIPLIER
 import mt5_lib
 
+def check_ema_diff(ema_period_one: int, ema_period_two: int) -> tuple[int, int]:
+    # confirm ema period differences and return tuple of (smaller, larger)
+    if ema_period_one == ema_period_two:
+        raise ValueError("EMA periods are equivalent.")
+
+    return min(ema_period_one, ema_period_two), max(ema_period_one, ema_period_two)
+
 def add_ema_to_dataframe(dataframe: pd.DataFrame, ema_period: int) -> pd.DataFrame:
     ema_column = f"ema_{ema_period}"
 
@@ -25,19 +32,59 @@ def add_ema_to_dataframe(dataframe: pd.DataFrame, ema_period: int) -> pd.DataFra
 
 def add_ema_cross_to_dataframe(
     dataframe: pd.DataFrame,
-    ema_period_one: int,
-    ema_period_two: int
+    warmup_period: int,
+    smaller_ema_period: int,
+    larger_ema_period: int
 ) -> pd.DataFrame:
-    current_position = dataframe[f"ema_{ema_period_one}"] > dataframe[f"ema_{ema_period_two}"]
-    previous_position = current_position.shift(1)
+    is_current_pos_bullish = dataframe[f"ema_{larger_ema_period}"] < dataframe[f"ema_{smaller_ema_period}"]
+    is_previous_pos_bullish = is_current_pos_bullish.shift(1)
 
     # add EMA cross column to the dataframe, setting the first value to False
-    dataframe['ema_cross'] = current_position != previous_position
+    dataframe['ema_cross'] = is_current_pos_bullish != is_previous_pos_bullish
     dataframe['ema_cross'].iat[0] = False
 
-    # calculate the warmup period for EMA and set the warmup values to False in the ema_cross column
-    warmup = max(ema_period_one, ema_period_two) * EMA_WARMUP_MULTIPLIER
-    dataframe.loc[: warmup - 1, "ema_cross"] = False
+    dataframe.loc[:warmup_period - 1, "ema_cross"] = False
+
+    # add action to be taken for candle
+    dataframe["action"] = "n/a"
+    dataframe.loc[
+        dataframe["ema_cross"] & is_current_pos_bullish, "action"
+    ] = "buy"
+    dataframe.loc[
+        dataframe["ema_cross"] & ~is_current_pos_bullish, "action"
+    ] = "sell"
+
+    return dataframe
+
+def add_trade_parameters_to_dataframe(
+    dataframe: pd.DataFrame,
+    smaller_ema_period: int,
+    larger_ema_period: int
+) -> pd.DataFrame:
+    dataframe['stop_loss'] = 0.00
+    dataframe['entry_price'] = 0.00
+    dataframe['take_profit'] = 0.00
+
+    crosses = dataframe.index[dataframe["ema_cross"]]
+    
+    for i in crosses:
+        if dataframe.loc[i, 'action'] == "buy":
+            # calculate buy parameters
+            stop_loss = dataframe.loc[i, f"ema_{larger_ema_period}"]
+            entry_price = dataframe.loc[i, 'high']
+            diff = entry_price - stop_loss
+            take_profit = entry_price + diff
+        elif dataframe.loc[i, 'action'] == "sell":
+            # calculate sell parameters
+            stop_loss = dataframe.loc[i, f"ema_{smaller_ema_period}"]
+            entry_price = dataframe.loc[i, 'low']
+            diff = stop_loss - entry_price
+            take_profit = entry_price - diff
+            
+        dataframe.loc[i, 'stop_loss'] = stop_loss
+        dataframe.loc[i, 'entry_price'] = entry_price
+        dataframe.loc[i,'take_profit'] = take_profit
+
     return dataframe
 
 def create_ema_dataframe(
@@ -47,6 +94,10 @@ def create_ema_dataframe(
     ema_period_two: int,
     number_of_candles: int
 ) -> pd.DataFrame:
+    
+    smaller_ema_period, larger_ema_period = check_ema_diff(ema_period_one, ema_period_two)
+    warmup_period = int(max(smaller_ema_period, larger_ema_period) * EMA_WARMUP_MULTIPLIER)
+
     ema_df = pd.DataFrame()
     # combine candlestick data for all symbols
     for symbol in symbols:
@@ -54,10 +105,15 @@ def create_ema_dataframe(
         symbol_df = mt5_lib.collect_candlesticks(symbol, timeframe, number_of_candles)
         symbol_df.insert(0, "symbol", symbol)
 
-        # add EMA columns and EMA cross column to the dataframe
-        symbol_df = add_ema_to_dataframe(symbol_df, ema_period_one)
-        symbol_df = add_ema_to_dataframe(symbol_df, ema_period_two)
-        symbol_df = add_ema_cross_to_dataframe(symbol_df, ema_period_one, ema_period_two)
+        # add EMA values and trade parameters
+        symbol_df = add_ema_to_dataframe(symbol_df, smaller_ema_period)
+        symbol_df = add_ema_to_dataframe(symbol_df, larger_ema_period)
+        symbol_df = add_ema_cross_to_dataframe(
+            symbol_df, warmup_period, smaller_ema_period, larger_ema_period
+        )
+        symbol_df = add_trade_parameters_to_dataframe(
+            symbol_df, smaller_ema_period, larger_ema_period
+        )
         ema_df = pd.concat([ema_df, symbol_df], ignore_index=True)
 
     return ema_df
