@@ -8,13 +8,17 @@ import os
 from dotenv import load_dotenv
 import logging
 
+import MetaTrader5 as mt5
+
+MAXIMUM_MT5_CANDLE_COUNT_PER_REQUEST = 50000
+LOT_SIZE_CALCULATION_VALUE = 1.0
+ORDER_FULFILL_TIME = mt5.ORDER_TIME_GTC # The order stays in the queue until it is manually canceled
+EMA_WARMUP_MULTIPLIER = 1.5
+
 load_dotenv()
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s: %(message)s", datefmt="%H:%M:%S"
 )
-
-MAXIMUM_MT5_CANDLE_COUNT_PER_REQUEST = 50000
-EMA_WARMUP_MULTIPLIER = 1.5
 
 def load_mt5_configs() -> dict[str, any]:
     return {
