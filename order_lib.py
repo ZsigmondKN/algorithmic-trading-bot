@@ -45,7 +45,7 @@ def calculate_lot_size(
 ) -> float:
     symbol_info = validate_symbol_info(symbol)
     
-    # Calculate the loss for a 1.0 lot position, 
+    # Calculate the loss for a 1.0 lot position
     loss_per_lot = mt5.order_calc_profit(
         order_type,
         symbol,
@@ -98,7 +98,7 @@ def build_order_request(
 
     return request
 
-def validate_trade_result(result, action: str) -> None:
+def validate_order_request_response(result, action: str) -> None:
     if result is None:
         raise RuntimeError(
             f"{action} failed: {mt5.last_error()}."
@@ -106,8 +106,7 @@ def validate_trade_result(result, action: str) -> None:
 
     if result.retcode != mt5.TRADE_RETCODE_DONE:
         raise RuntimeError(
-            f"{action} failed with retcode={result.retcode}, "
-            f"comment='{result.comment}'."
+            f"{action} failed with retcode={result.retcode} and comment='{result.comment}'."
         )
 
 def place_order(
@@ -120,7 +119,6 @@ def place_order(
     comment: str,
     bypass_order_check: bool = False
 ) -> mt5.OrderSendResult:
-    
     symbol_info = validate_symbol_info(symbol)
     normalised_lot_size = normalise_lot_size(symbol_info, lot_size)
     normalised_stop_loss, normalised_take_profit, normalised_entry_price = normalise_price_parameters(
@@ -139,9 +137,9 @@ def place_order(
 
     if not bypass_order_check:
         check_result = mt5.order_check(request)
-        validate_trade_result(check_result, "Order check")
+        validate_order_request_response(check_result, "Order check")
     
     order_result = mt5.order_send(request)
-    validate_trade_result(order_result, "Order submission")
+    validate_order_request_response(order_result, "Order submission")
     
     return order_result

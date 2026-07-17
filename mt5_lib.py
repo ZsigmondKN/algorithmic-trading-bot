@@ -14,7 +14,6 @@ def login(configs: dict[str, str]) -> None:
     account_server = configs['server']
     account_password = configs['password']
 
-    # attempt to initialize MT5 with the provided credentials
     login_success = mt5.initialize(
         login=int(account_username), 
         password=account_password, 
@@ -29,7 +28,6 @@ def validate_and_initialise_symbols(symbol_configs: dict[str, str]) -> None:
     available_symbols = {symbol.name for symbol in mt5.symbols_get()}
 
     for symbol in symbol_configs['symbols']:
-        # validate if the symbol exists in the available set
         if symbol not in available_symbols:
             raise ValueError(f"Symbol '{symbol}' not found in this MT5 version. Update symbol name.")
         # attempt to initialise the symbol
@@ -56,5 +54,4 @@ def collect_candlesticks(symbol: str, timeframe: str, number_of_candles: int) ->
     if candles is None:
         raise RuntimeError(f"Failed to retrieve data for {symbol}")
     
-    # return as a DataFrame for easier manipulation
     return pd.DataFrame(candles)

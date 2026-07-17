@@ -10,8 +10,7 @@ import matplotlib.pyplot as plt
 from config import EMA_WARMUP_MULTIPLIER
 import mt5_lib
 
-def check_ema_diff(ema_period_one: int, ema_period_two: int) -> tuple[int, int]:
-    # confirm ema period differences and return tuple of (smaller, larger)
+def check_and_order_emas(ema_period_one: int, ema_period_two: int) -> tuple[int, int]:
     if ema_period_one == ema_period_two:
         raise ValueError("EMA periods are equivalent.")
 
@@ -22,15 +21,14 @@ def add_ema_to_dataframe(dataframe: pd.DataFrame, ema_period: int) -> pd.DataFra
 
     # add an EMA column to the dataframe using pandas' Exponential Moving Window (EWM)
     dataframe[ema_column] = dataframe['close'].ewm(
-        # use the specified period for the EMA calculation
         span = ema_period,
-        # calculate the EMA without adjusting for previous values, this is standard trading
+        # calculate the EMA without adjusting for previous values, this is standard for trading
         adjust = False 
     ).mean() # convert EWM into EMA
     
     return dataframe
 
-def add_ema_cross_to_dataframe(
+def add_ema_cross_and_action_to_dataframe(
     dataframe: pd.DataFrame,
     warmup_period: int,
     smaller_ema_period: int,
@@ -39,13 +37,10 @@ def add_ema_cross_to_dataframe(
     is_current_pos_bullish = dataframe[f"ema_{larger_ema_period}"] < dataframe[f"ema_{smaller_ema_period}"]
     is_previous_pos_bullish = is_current_pos_bullish.shift(1)
 
-    # add EMA cross column to the dataframe, setting the first value to False
     dataframe['ema_cross'] = is_current_pos_bullish != is_previous_pos_bullish
     dataframe['ema_cross'].iat[0] = False
-
     dataframe.loc[:warmup_period - 1, "ema_cross"] = False
 
-    # add action to be taken for candle
     dataframe["action"] = "n/a"
     dataframe.loc[
         dataframe["ema_cross"] & is_current_pos_bullish, "action"
@@ -95,7 +90,7 @@ def create_ema_dataframe(
     number_of_candles: int
 ) -> pd.DataFrame:
     
-    smaller_ema_period, larger_ema_period = check_ema_diff(ema_period_one, ema_period_two)
+    smaller_ema_period, larger_ema_period = check_and_order_emas(ema_period_one, ema_period_two)
     warmup_period = int(max(smaller_ema_period, larger_ema_period) * EMA_WARMUP_MULTIPLIER)
 
     ema_df = pd.DataFrame()
@@ -108,7 +103,7 @@ def create_ema_dataframe(
         # add EMA values and trade parameters
         symbol_df = add_ema_to_dataframe(symbol_df, smaller_ema_period)
         symbol_df = add_ema_to_dataframe(symbol_df, larger_ema_period)
-        symbol_df = add_ema_cross_to_dataframe(
+        symbol_df = add_ema_cross_and_action_to_dataframe(
             symbol_df, warmup_period, smaller_ema_period, larger_ema_period
         )
         symbol_df = add_trade_parameters_to_dataframe(
@@ -121,7 +116,7 @@ def create_ema_dataframe(
 def log_ema_crosses(ema_df: pd.DataFrame) -> None:
     ema_df_cross = ema_df[ema_df["ema_cross"]]
 
-    logging.info(f"EMA crosses:")
+    logging.info(f"EMA dataframe:")
     print(ema_df_cross)
 
 def plot_ema_charts(

@@ -14,7 +14,6 @@ def start_up():
         mt5_configs = config.load_mt5_configs()
         symbol_configs = config.load_symbol_configs()
         strategy_configs = config.load_strategy_configs()
-
         config.log_configs(mt5_configs, symbol_configs, strategy_configs)
 
         mt5_lib.login(mt5_configs)
