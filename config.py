@@ -33,6 +33,11 @@ def load_symbol_configs() -> dict[str, any]:
         'timeframe': os.getenv('MT5_TIMEFRAME')
     }
 
+def load_order_configs() -> dict[str, any]:
+    return {
+        'risk_percentage_per_trade': float(os.getenv('RISK_PERCENTAGE_PER_TRADE'))
+    }
+
 def load_strategy_configs() -> dict[str, any]:
     return {
         'strategy': os.getenv('STRATEGY'),

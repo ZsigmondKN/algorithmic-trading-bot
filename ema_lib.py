@@ -41,13 +41,13 @@ def add_ema_cross_and_action_to_dataframe(
     dataframe['ema_cross'].iat[0] = False
     dataframe.loc[:warmup_period - 1, "ema_cross"] = False
 
-    dataframe["action"] = "n/a"
+    dataframe["order_type"] = "n/a"
     dataframe.loc[
-        dataframe["ema_cross"] & is_current_pos_bullish, "action"
-    ] = "buy"
+        dataframe["ema_cross"] & is_current_pos_bullish, "order_type"
+    ] = "buy_stop"
     dataframe.loc[
-        dataframe["ema_cross"] & ~is_current_pos_bullish, "action"
-    ] = "sell"
+        dataframe["ema_cross"] & ~is_current_pos_bullish, "order_type"
+    ] = "sell_stop"
 
     return dataframe
 
@@ -63,13 +63,13 @@ def add_trade_parameters_to_dataframe(
     crosses = dataframe.index[dataframe["ema_cross"]]
     
     for i in crosses:
-        if dataframe.loc[i, 'action'] == "buy":
+        if dataframe.loc[i, 'order_type'] == "buy_stop":
             # calculate buy parameters
             stop_loss = dataframe.loc[i, f"ema_{larger_ema_period}"]
             entry_price = dataframe.loc[i, 'high']
             diff = entry_price - stop_loss
             take_profit = entry_price + diff
-        elif dataframe.loc[i, 'action'] == "sell":
+        elif dataframe.loc[i, 'order_type'] == "sell_stop":
             # calculate sell parameters
             stop_loss = dataframe.loc[i, f"ema_{smaller_ema_period}"]
             entry_price = dataframe.loc[i, 'low']
@@ -83,35 +83,29 @@ def add_trade_parameters_to_dataframe(
     return dataframe
 
 def create_ema_dataframe(
-    symbols: list[str],
+    symbol: str,
     timeframe: str,
     ema_period_one: int,
     ema_period_two: int,
     number_of_candles: int
 ) -> pd.DataFrame:
-    
     smaller_ema_period, larger_ema_period = check_and_order_emas(ema_period_one, ema_period_two)
     warmup_period = int(max(smaller_ema_period, larger_ema_period) * EMA_WARMUP_MULTIPLIER)
 
-    ema_df = pd.DataFrame()
-    # combine candlestick data for all symbols
-    for symbol in symbols:
-        # collect symbol data and add symbol column
-        symbol_df = mt5_lib.collect_candlesticks(symbol, timeframe, number_of_candles)
-        symbol_df.insert(0, "symbol", symbol)
+    symbol_ema_df = mt5_lib.collect_candlesticks(symbol, timeframe, number_of_candles)
+    symbol_ema_df.insert(0, "symbol", symbol)
 
-        # add EMA values and trade parameters
-        symbol_df = add_ema_to_dataframe(symbol_df, smaller_ema_period)
-        symbol_df = add_ema_to_dataframe(symbol_df, larger_ema_period)
-        symbol_df = add_ema_cross_and_action_to_dataframe(
-            symbol_df, warmup_period, smaller_ema_period, larger_ema_period
-        )
-        symbol_df = add_trade_parameters_to_dataframe(
-            symbol_df, smaller_ema_period, larger_ema_period
-        )
-        ema_df = pd.concat([ema_df, symbol_df], ignore_index=True)
+    # add EMA values and trade parameters
+    symbol_ema_df = add_ema_to_dataframe(symbol_ema_df, smaller_ema_period)
+    symbol_ema_df = add_ema_to_dataframe(symbol_ema_df, larger_ema_period)
+    symbol_ema_df = add_ema_cross_and_action_to_dataframe(
+        symbol_ema_df, warmup_period, smaller_ema_period, larger_ema_period
+    )
+    symbol_ema_df = add_trade_parameters_to_dataframe(
+        symbol_ema_df, smaller_ema_period, larger_ema_period
+    )
 
-    return ema_df
+    return symbol_ema_df
 
 def log_ema_crosses(ema_df: pd.DataFrame) -> None:
     ema_df_cross = ema_df[ema_df["ema_cross"]]
@@ -164,13 +158,20 @@ def plot_ema_charts(
         plt.show()
 
 def generate_ema_report(symbol_configs: dict[str, str], strategy_configs: dict[str, str]):
-    ema_df = create_ema_dataframe(
-        symbol_configs["symbols"],
-        symbol_configs["timeframe"],
-        strategy_configs["ema_period_one"],
-        strategy_configs["ema_period_two"],
-        strategy_configs["number_of_candles"],
-    )
+    combined_ema_df = pd.DataFrame()
+    for symbol in symbol_configs["symbols"]:
+        symbol_ema_df = create_ema_dataframe(
+            symbol,
+            symbol_configs["timeframe"],
+            strategy_configs["ema_period_one"],
+            strategy_configs["ema_period_two"],
+            strategy_configs["number_of_candles"],
+        )
+        combined_ema_df = pd.concat([combined_ema_df, symbol_ema_df], ignore_index = True)
 
-    log_ema_crosses(ema_df)
-    plot_ema_charts(ema_df, strategy_configs["ema_period_one"], strategy_configs["ema_period_two"])
+    log_ema_crosses(combined_ema_df)
+    plot_ema_charts(
+        combined_ema_df, 
+        strategy_configs["ema_period_one"], 
+        strategy_configs["ema_period_two"]
+    )

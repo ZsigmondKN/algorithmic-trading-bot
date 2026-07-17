@@ -7,12 +7,27 @@ import MetaTrader5 as mt5
 
 from config import LOT_SIZE_CALCULATION_VALUE, ORDER_FULFILL_TIME
 
+def get_account_balance() -> float:
+    account_info = mt5.account_info()
+    if account_info is None:
+        raise RuntimeError(f"Unable to retrieve account information: {mt5.last_error()}")
+
+    return account_info.balance
+
 def validate_symbol_info(symbol: str) -> tuple:
     info = mt5.symbol_info(symbol)
     if info is None:
         raise ValueError(f"Unknown symbol: {symbol}")
     
     return info
+
+def validate_order_type(order_type: str) -> int:
+    if order_type == 'buy_stop':
+        return mt5.ORDER_TYPE_BUY_STOP
+    elif order_type == 'sell_stop':
+        return mt5.ORDER_TYPE_SELL_STOP
+    else:
+        raise RuntimeError(f"Unrecognised order type of: {order_type}.")
 
 def normalise_price_parameters(
     symbol_info: tuple, stop_loss: float, take_profit: float, entry_price: float
@@ -38,16 +53,17 @@ def normalise_lot_size(symbol_info: tuple, lot_size: float) -> float:
 def calculate_lot_size(
     balance: float,
     risk_percentage: float,
-    order_type: int,
+    order_type: str,
     symbol: str,
     entry_price: float,
     stop_loss: float
 ) -> float:
     symbol_info = validate_symbol_info(symbol)
+    valid_order_type = validate_order_type(order_type)
     
     # Calculate the loss for a 1.0 lot position
     loss_per_lot = mt5.order_calc_profit(
-        order_type,
+        valid_order_type,
         symbol,
         LOT_SIZE_CALCULATION_VALUE,
         entry_price,
@@ -55,7 +71,7 @@ def calculate_lot_size(
     )
 
     error_log_parameters = (
-        f"order_type={order_type}, "
+        f"order_type={valid_order_type}, "
         f"symbol={symbol}, "
         f"lot_size_calculation_value={LOT_SIZE_CALCULATION_VALUE} ,"
         f"entry_price={entry_price}, "
@@ -77,7 +93,7 @@ def calculate_lot_size(
 def build_order_request(
     symbol: str,
     lot_size: float,
-    order_type: int,
+    order_type: str,
     entry_price: float,
     stop_loss: float,
     take_profit: float,
@@ -87,7 +103,7 @@ def build_order_request(
         "action": mt5.TRADE_ACTION_PENDING,
         "symbol": symbol,
         "volume": lot_size,
-        "type": order_type,
+        "type": validate_order_type(order_type),
         "price": entry_price,
         "sl": stop_loss,
         "tp": take_profit,
@@ -112,7 +128,7 @@ def validate_order_request_response(result, action: str) -> None:
 def place_order(
     symbol: str,
     lot_size: float,
-    order_type: int,
+    order_type: str,
     entry_price: float,
     stop_loss: float,
     take_profit: float,
