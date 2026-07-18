@@ -34,7 +34,7 @@ def validate_and_initialise_symbols(symbol_configs: dict[str, str]) -> None:
         if not mt5.symbol_select(symbol, True):
             raise RuntimeError(f"Failed to initialise symbol: {symbol}")
 
-    logging.info("All requested symbols successfully initialised.")
+    logging.info("All requested symbols successfully initialised.\n")
 
 def collect_candlesticks(symbol: str, timeframe: str, number_of_candles: int) -> pd.DataFrame:
     if number_of_candles > MAXIMUM_MT5_CANDLE_COUNT_PER_REQUEST:
@@ -52,6 +52,8 @@ def collect_candlesticks(symbol: str, timeframe: str, number_of_candles: int) ->
     
     candles = mt5.copy_rates_from_pos(symbol, mt5_timeframe, initial_candle_index, number_of_candles)
     if candles is None:
-        raise RuntimeError(f"Failed to retrieve data for {symbol}")
+        raise RuntimeError(
+            f"Failed to retrieve data for {symbol}. Error provided: {mt5.last_error()}"
+        )
     
     return pd.DataFrame(candles)

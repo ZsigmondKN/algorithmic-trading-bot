@@ -3,16 +3,18 @@ Author: Zsigmond Kovacs-Nagy
 Description: Compute and use Exponential Moving Averages (EMAs).
 """
 
-import logging
-
+from config import LOGGING_INDENT
 import ema_lib
 import order_lib
 
 def ema_cross_strategy(
     symbol_configs: dict[str, str],
     order_configs: dict[str, str],
-    strategy_configs: dict[str, str],
-) -> None:
+    strategy_configs: dict[str, str]
+) -> tuple:
+    report = ""
+    order_placed = False
+
     for symbol in symbol_configs['symbols']:
         ema_df = ema_lib.create_ema_dataframe(
             symbol,
@@ -43,5 +45,13 @@ def ema_cross_strategy(
                 comment = f"EMA_Cross_Strategy_{symbol}",
                 bypass_order_check = False
             )
-            logging.info(order_outcome)
-        logging.info(latest_signal.to_frame().T)
+            
+            order_placed = True
+            report += f"New order submitted. The order response is:\n {order_outcome}\n"
+        else:
+            report += "The EMA values did not cross and so no order was placed.\n"
+        
+        report += latest_signal.to_frame().T.to_string(index=False)
+        report = report.replace("\n", f"\n{LOGGING_INDENT}")
+
+        return order_placed, report
