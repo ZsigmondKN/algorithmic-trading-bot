@@ -4,6 +4,7 @@ Description: ...
 """
 
 import MetaTrader5 as mt5
+import logging
 
 from config import LOT_SIZE_CALCULATION_VALUE, ORDER_FULFILL_TIME
 
@@ -159,3 +160,33 @@ def place_order(
     validate_order_request_response(order_result, "Order submission")
     
     return order_result
+
+def cancel_order(order_number: int) -> bool:
+    cancel_request = {
+        "action": mt5.TRADE_ACTION_REMOVE,
+        "order": order_number,
+        "comment": f"Order {order_number} removed."
+    }
+
+    try:
+        cancel_order_result = mt5.order_send(cancel_request)
+        if cancel_order_result.retcode == mt5.TRADE_RETCODE_DONE:
+            logging.info(f"Order {order_number} cancelled successfully")
+            return True
+        
+        logging.error(
+            f"Order {order_number} was unable to cancel the order!\n"
+            f"Retcode: {cancel_order_result.retcode}, Comment: {cancel_order_result.comment}\n"
+            f"MT5 error: {mt5.last_error()}, Result: {cancel_order_result}"
+        )
+        return False
+    
+    except Exception:
+        logging.exception(f"Unexpected error while cancelling order {order_number}.")
+        raise
+
+def cancel_all_pending_orders():
+    all_open_orders = mt5.orders_get()
+
+    for open_order in all_open_orders:
+        cancel_order(open_order.ticket)

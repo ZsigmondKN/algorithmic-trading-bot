@@ -7,9 +7,10 @@ import logging
 from time import sleep
 from datetime import datetime
 
-import ema_strategy_lib
 from config import EMA_CROSS_STRATEGY, LOGGING_INDENT, STRATEGY_CHECK_FREQUENCY
+import ema_strategy_lib
 import mt5_lib
+import order_lib
 
 def log_setup_config(
     mt5_configs: dict[str, str],
@@ -54,6 +55,7 @@ def run_strategy(
     symbols = symbol_configs["symbols"]
     timeframe = symbol_configs["timeframe"]
     previous_candle_time = None
+    active_position = False
 
     while True:
         current_candle = mt5_lib.collect_candlesticks(
@@ -63,16 +65,20 @@ def run_strategy(
         )
         current_candle_time = current_candle.iloc[0]["time"]
 
-        if current_candle_time != previous_candle_time:
+        # if order was not placed in the span of the STRATEGY_CHECK_FREQUENCY, cancel the order
+        order_lib.cancel_all_pending_orders()
+        # TODO for the future: check if there are any active positions for the account 
+        # to set the active_position variable
+
+        if current_candle_time != previous_candle_time and not active_position:
             previous_candle_time = current_candle_time
 
-            # TODO for the future: I only want one trade at one time to occure.
-            order_placed, report = trading_strategy(
+            new_order_placed, report = trading_strategy(
                 symbol_configs,
                 order_configs,
                 strategy_configs
             )
-            if order_placed:
+            if new_order_placed:
                 logging.info(report)
             else:
                 logging.debug(report)

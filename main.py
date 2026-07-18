@@ -8,9 +8,9 @@ import MetaTrader5 as mt5
 
 import config
 import ema_lib
-import ema_strategy_lib
-import runtime_lib
 import mt5_lib
+import order_lib
+import runtime_lib
     
 def start_up():
         mt5_configs = config.load_mt5_configs()
@@ -28,11 +28,11 @@ def start_up():
 if __name__ == '__main__':
     try:
         start_up()
-        mt5.shutdown()
     except KeyboardInterrupt:
         logging.info("Shutdowwn request by user.")
     except Exception as e:
         logging.exception("Unhandled exception.")
     finally:
+        order_lib.cancel_all_pending_orders()
         mt5.shutdown()
         logging.info("Disconnected MT5.")

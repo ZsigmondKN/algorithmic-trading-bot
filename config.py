@@ -10,12 +10,15 @@ import logging
 
 import MetaTrader5 as mt5
 
+# MT5 constants
+MAXIMUM_MT5_CANDLE_COUNT_PER_REQUEST = 50000
+
+# Runtime constants
+STRATEGY_CHECK_FREQUENCY = 10
+
 # Order placing constants
 LOT_SIZE_CALCULATION_VALUE = 1.0
 ORDER_FULFILL_TIME = mt5.ORDER_TIME_GTC # The order stays in the queue until it is manually canceled
-
-# MT5 constants
-MAXIMUM_MT5_CANDLE_COUNT_PER_REQUEST = 50000
 
 # EMA strategy constants
 EMA_CROSS_STRATEGY = 'ema_cross_strategy'
