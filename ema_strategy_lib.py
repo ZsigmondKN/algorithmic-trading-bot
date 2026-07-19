@@ -54,4 +54,4 @@ def ema_cross_strategy(
         report += latest_signal.to_frame().T.to_string(index=False)
         report = report.replace("\n", f"\n{LOGGING_INDENT}")
 
-        return order_placed, report
+    return order_placed, report

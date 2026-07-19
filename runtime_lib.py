@@ -3,9 +3,10 @@ Author: Zsigmond Kovacs-Nagy
 Description: ...
 """
 
+from datetime import datetime
+import MetaTrader5 as mt5
 import logging
 from time import sleep
-from datetime import datetime
 
 from config import EMA_CROSS_STRATEGY, LOGGING_INDENT, STRATEGY_CHECK_FREQUENCY
 import ema_strategy_lib
@@ -42,6 +43,7 @@ def select_trading_strategy(strategy_configs: dict[str, str]):
         )
         return ema_strategy_lib.ema_cross_strategy
     else:
+        # TODO: implement another strategy using TaLib, refer to video
         raise RuntimeError(
             f"The selected trading stategy of '{strategy_configs["strategy"]}' is incompatible "
             f"with the available options.")
@@ -55,7 +57,6 @@ def run_strategy(
     symbols = symbol_configs["symbols"]
     timeframe = symbol_configs["timeframe"]
     previous_candle_time = None
-    active_position = False
 
     while True:
         current_candle = mt5_lib.collect_candlesticks(
@@ -67,10 +68,10 @@ def run_strategy(
 
         # if order was not placed in the span of the STRATEGY_CHECK_FREQUENCY, cancel the order
         order_lib.cancel_all_pending_orders()
-        # TODO for the future: check if there are any active positions for the account 
-        # to set the active_position variable
 
-        if current_candle_time != previous_candle_time and not active_position:
+        has_active_position = mt5.positions_total() > 0
+
+        if current_candle_time != previous_candle_time and not has_active_position:
             previous_candle_time = current_candle_time
 
             new_order_placed, report = trading_strategy(

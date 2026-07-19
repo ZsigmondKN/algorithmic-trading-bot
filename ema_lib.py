@@ -51,34 +51,53 @@ def add_ema_cross_and_action_to_dataframe(
 
     return dataframe
 
-def add_trade_parameters_to_dataframe(
+def add_ema_trade_parameters_to_dataframe(
     dataframe: pd.DataFrame,
     smaller_ema_period: int,
     larger_ema_period: int
 ) -> pd.DataFrame:
-    dataframe['stop_loss'] = 0.00
-    dataframe['entry_price'] = 0.00
-    dataframe['take_profit'] = 0.00
+    dataframe["stop_loss"] = float("nan")
+    dataframe["entry_price"] = float("nan")
+    dataframe["take_profit"] = float("nan")
+    dataframe["valid_trade"] = False
 
     crosses = dataframe.index[dataframe["ema_cross"]]
     
     for i in crosses:
-        if dataframe.loc[i, 'order_type'] == "buy_stop":
-            # calculate buy parameters
-            stop_loss = dataframe.loc[i, f"ema_{larger_ema_period}"]
+        order_type = dataframe.loc[i, 'order_type']
+        if order_type == "buy_stop":
+            stop_loss = min(
+                dataframe.loc[i, f"ema_{smaller_ema_period}"],
+                dataframe.loc[i, f"ema_{larger_ema_period}"],
+            )
             entry_price = dataframe.loc[i, 'high']
+            valid_trade = stop_loss < entry_price
+
+            if not valid_trade:
+                continue
+
             diff = entry_price - stop_loss
             take_profit = entry_price + diff
-        elif dataframe.loc[i, 'order_type'] == "sell_stop":
-            # calculate sell parameters
-            stop_loss = dataframe.loc[i, f"ema_{smaller_ema_period}"]
+        elif order_type == "sell_stop":
+            stop_loss = max(
+                dataframe.loc[i, f"ema_{smaller_ema_period}"],
+                dataframe.loc[i, f"ema_{larger_ema_period}"],
+            )
             entry_price = dataframe.loc[i, 'low']
+            valid_trade = entry_price < stop_loss
+
+            if not valid_trade:
+                continue
+
             diff = stop_loss - entry_price
             take_profit = entry_price - diff
-            
+        else:
+            raise ValueError(f"Unrecognised order type of '{order_type}' assigned to ema cross.")
+
+        dataframe.loc[i, 'valid_trade'] = True
         dataframe.loc[i, 'stop_loss'] = stop_loss
         dataframe.loc[i, 'entry_price'] = entry_price
-        dataframe.loc[i,'take_profit'] = take_profit
+        dataframe.loc[i, 'take_profit'] = take_profit
 
     return dataframe
 
@@ -101,7 +120,7 @@ def create_ema_dataframe(
     symbol_ema_df = add_ema_cross_and_action_to_dataframe(
         symbol_ema_df, warmup_period, smaller_ema_period, larger_ema_period
     )
-    symbol_ema_df = add_trade_parameters_to_dataframe(
+    symbol_ema_df = add_ema_trade_parameters_to_dataframe(
         symbol_ema_df, smaller_ema_period, larger_ema_period
     )
 
