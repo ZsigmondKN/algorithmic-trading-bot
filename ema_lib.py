@@ -5,6 +5,7 @@ Description: Compute and use Exponential Moving Averages (EMAs).
 
 import logging
 import pandas as pd
+import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
 
 from config import EMA_WARMUP_MULTIPLIER
@@ -38,7 +39,7 @@ def add_ema_cross_and_action_to_dataframe(
     is_previous_pos_bullish = is_current_pos_bullish.shift(1)
 
     dataframe['ema_cross'] = is_current_pos_bullish != is_previous_pos_bullish
-    dataframe['ema_cross'].iat[0] = False
+    dataframe.loc[dataframe.index[0], "ema_cross"] = False
     dataframe.loc[:warmup_period - 1, "ema_cross"] = False
 
     dataframe["order_type"] = "n/a"
@@ -103,28 +104,26 @@ def add_ema_trade_parameters_to_dataframe(
 
 def create_ema_dataframe(
     symbol: str,
-    timeframe: str,
+    candle_dataframe: pd.DataFrame,
     ema_period_one: int,
     ema_period_two: int,
-    number_of_candles: int
 ) -> pd.DataFrame:
     smaller_ema_period, larger_ema_period = check_and_order_emas(ema_period_one, ema_period_two)
     warmup_period = int(max(smaller_ema_period, larger_ema_period) * EMA_WARMUP_MULTIPLIER)
 
-    symbol_ema_df = mt5_lib.collect_candlesticks(symbol, timeframe, number_of_candles)
-    symbol_ema_df.insert(0, "symbol", symbol)
+    candle_dataframe.insert(0, "symbol", symbol)
 
     # add EMA values and trade parameters
-    symbol_ema_df = add_ema_to_dataframe(symbol_ema_df, smaller_ema_period)
-    symbol_ema_df = add_ema_to_dataframe(symbol_ema_df, larger_ema_period)
-    symbol_ema_df = add_ema_cross_and_action_to_dataframe(
-        symbol_ema_df, warmup_period, smaller_ema_period, larger_ema_period
+    candle_dataframe = add_ema_to_dataframe(candle_dataframe, smaller_ema_period)
+    candle_dataframe = add_ema_to_dataframe(candle_dataframe, larger_ema_period)
+    candle_dataframe = add_ema_cross_and_action_to_dataframe(
+        candle_dataframe, warmup_period, smaller_ema_period, larger_ema_period
     )
-    symbol_ema_df = add_ema_trade_parameters_to_dataframe(
-        symbol_ema_df, smaller_ema_period, larger_ema_period
+    candle_dataframe = add_ema_trade_parameters_to_dataframe(
+        candle_dataframe, smaller_ema_period, larger_ema_period
     )
 
-    return symbol_ema_df
+    return candle_dataframe
 
 def log_ema_crosses(ema_df: pd.DataFrame) -> None:
     ema_df_cross = ema_df[ema_df["ema_cross"]]
@@ -138,53 +137,86 @@ def plot_ema_charts(
     ema_period_two: int,
 ) -> None:
     for symbol, symbol_df in ema_df.groupby("symbol"):
-        plt.figure(figsize=(12, 6))
+        plot_datetime = pd.to_datetime(
+            symbol_df["date"].astype(str)
+            + " "
+            + symbol_df["time"].astype(str),
+            utc=True
+        )
 
-        plt.plot(
-            symbol_df.index,
+        fig, ax = plt.subplots(figsize=(12, 6))
+
+        ax.plot(
+            plot_datetime,
             symbol_df["close"],
-            label = "Price",
+            label="Price",
         )
 
-        plt.plot(
-            symbol_df.index,
+        ax.plot(
+            plot_datetime,
             symbol_df[f"ema_{ema_period_one}"],
-            label = f"EMA {ema_period_one}",
+            label=f"EMA {ema_period_one}",
         )
 
-        plt.plot(
-            symbol_df.index,
+        ax.plot(
+            plot_datetime,
             symbol_df[f"ema_{ema_period_two}"],
-            label = f"EMA {ema_period_two}",
+            label=f"EMA {ema_period_two}",
         )
 
-        # mark EMA crosses
-        cross_df = symbol_df[symbol_df["ema_cross"]]
-        plt.scatter(
-            x = cross_df.index,
-            y = cross_df["close"],
+        # Mark EMA crosses
+        cross_mask = symbol_df["ema_cross"]
+
+        ax.scatter(
+            plot_datetime[cross_mask],
+            symbol_df.loc[cross_mask, "close"],
             color="red",
-            marker = "o",
-            label = "EMA Cross",
+            marker="o",
+            label="EMA Cross",
         )
 
-        plt.title(symbol)
-        plt.xlabel("Candle")
-        plt.ylabel("Price")
-        plt.legend()
-        plt.grid(True)
+        # Let Matplotlib choose the date or time labels
+        locator = mdates.AutoDateLocator()
+
+        ax.xaxis.set_major_locator(locator)
+
+        ax.xaxis.set_major_formatter(
+            mdates.ConciseDateFormatter(locator)
+        )
+
+        ax.set_title(symbol)
+        ax.set_xlabel("Date and Time")
+        ax.set_ylabel("Price")
+
+        ax.legend()
+        ax.grid(True)
+
+        fig.autofmt_xdate()
 
         plt.show()
 
 def generate_ema_report(symbol_configs: dict[str, str], strategy_configs: dict[str, str]):
     combined_ema_df = pd.DataFrame()
     for symbol in symbol_configs["symbols"]:
+        if symbol_configs["historical_timeframe"]:
+            candle_dataframe = mt5_lib.collect_historical_candlesticks(
+                symbol,
+                symbol_configs["timeframe"],
+                symbol_configs["historical_start_time"],
+                symbol_configs["historical_end_time"]
+            )
+        else:
+            candle_dataframe = mt5_lib.collect_current_candlesticks(
+                symbol,
+                symbol_configs["timeframe"],
+                symbol_configs["number_of_candles"]
+            )
+        
         symbol_ema_df = create_ema_dataframe(
             symbol,
-            symbol_configs["timeframe"],
+            candle_dataframe,
             strategy_configs["ema_period_one"],
             strategy_configs["ema_period_two"],
-            strategy_configs["number_of_candles"],
         )
         combined_ema_df = pd.concat([combined_ema_df, symbol_ema_df], ignore_index = True)
 

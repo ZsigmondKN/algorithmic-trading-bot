@@ -5,6 +5,7 @@ Description: Compute and use Exponential Moving Averages (EMAs).
 
 from config import LOGGING_INDENT
 import ema_lib
+import mt5_lib
 import order_lib
 
 def ema_cross_strategy(
@@ -16,12 +17,16 @@ def ema_cross_strategy(
     order_placed = False
 
     for symbol in symbol_configs['symbols']:
-        ema_df = ema_lib.create_ema_dataframe(
+        candle_dataframe = mt5_lib.collect_current_candlesticks(
             symbol,
             symbol_configs["timeframe"],
+            symbol_configs["number_of_candles"]
+        )
+        ema_df = ema_lib.create_ema_dataframe(
+            symbol,
+            candle_dataframe,
             strategy_configs["ema_period_one"],
             strategy_configs["ema_period_two"],
-            strategy_configs["number_of_candles"],
         )
 
         latest_signal = ema_df.iloc[-1]

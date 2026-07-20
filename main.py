@@ -22,8 +22,8 @@ def start_up():
         mt5_lib.login(mt5_configs)
         mt5_lib.validate_and_initialise_symbols(symbol_configs)
         
-        # ema_lib.generate_ema_report(symbol_configs, strategy_configs)
-        runtime_lib.run_strategy(symbol_configs, order_configs, strategy_configs)
+        ema_lib.generate_ema_report(symbol_configs, strategy_configs)
+        # runtime_lib.run_strategy(symbol_configs, order_configs, strategy_configs)
 
 if __name__ == '__main__':
     try:

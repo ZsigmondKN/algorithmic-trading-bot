@@ -1,4 +1,3 @@
-
 """
 Author: Zsigmond Kovacs-Nagy
 Description: ...
@@ -6,6 +5,7 @@ Description: ...
 
 import os
 from dotenv import load_dotenv
+from datetime import datetime
 import logging
 
 import MetaTrader5 as mt5
@@ -42,7 +42,11 @@ def load_mt5_configs() -> dict[str, any]:
 def load_symbol_configs() -> dict[str, any]:
     return {
         'symbols': os.getenv('MT5_SYMBOLS').split(','),
-        'timeframe': os.getenv('MT5_TIMEFRAME')
+        'timeframe': os.getenv('MT5_TIMEFRAME'),
+        'number_of_candles': int(os.getenv('NUMBER_OF_CANDLES')),
+        'historical_timeframe': bool(os.getenv('HISTORICAL_TIMEFRAME')),
+        'historical_start_time': datetime.strptime(os.getenv('HISTORICAL_START_TIME'), "%Y-%m-%d"),
+        'historical_end_time': datetime.strptime(os.getenv("HISTORICAL_END_TIME"),"%Y-%m-%d")
     }
 
 def load_order_configs() -> dict[str, any]:
@@ -55,5 +59,4 @@ def load_strategy_configs() -> dict[str, any]:
         'strategy': os.getenv('STRATEGY'),
         'ema_period_one': int(os.getenv('EMA_PERIOD_ONE')),
         'ema_period_two': int(os.getenv('EMA_PERIOD_TWO')),
-        'number_of_candles': int(os.getenv('NUMBER_OF_CANDLES'))
     }

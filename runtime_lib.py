@@ -34,11 +34,10 @@ def select_trading_strategy(strategy_configs: dict[str, str]):
     if strategy_configs["strategy"] == EMA_CROSS_STRATEGY:
         ema_period_one = strategy_configs['ema_period_one']
         ema_period_two = strategy_configs['ema_period_two']
-        number_of_candles = strategy_configs['number_of_candles']
 
         logging.info(
-            f"Using the EMA cross strategy with periods {ema_period_one} and {ema_period_two} on "
-            f"{number_of_candles} candles.\n{LOGGING_INDENT}"
+            f"Using the EMA cross strategy with periods {ema_period_one} "
+            f"and {ema_period_two}.\n{LOGGING_INDENT}"
             "Waiting for EMA cross to occure..."
         )
         return ema_strategy_lib.ema_cross_strategy
@@ -59,7 +58,7 @@ def run_strategy(
     previous_candle_time = None
 
     while True:
-        current_candle = mt5_lib.collect_candlesticks(
+        current_candle = mt5_lib.collect_current_candlesticks(
             symbol=symbols[0],
             timeframe=timeframe,
             number_of_candles=1
