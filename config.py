@@ -5,7 +5,7 @@ Description: ...
 
 import os
 from dotenv import load_dotenv
-from datetime import datetime
+from datetime import datetime, timezone
 import logging
 
 import MetaTrader5 as mt5
@@ -45,8 +45,12 @@ def load_symbol_configs() -> dict[str, any]:
         'timeframe': os.getenv('MT5_TIMEFRAME'),
         'number_of_candles': int(os.getenv('NUMBER_OF_CANDLES')),
         'historical_timeframe': bool(os.getenv('HISTORICAL_TIMEFRAME')),
-        'historical_start_time': datetime.strptime(os.getenv('HISTORICAL_START_TIME'), "%Y-%m-%d"),
-        'historical_end_time': datetime.strptime(os.getenv("HISTORICAL_END_TIME"),"%Y-%m-%d")
+        'historical_start_time': datetime.strptime(
+            os.getenv('HISTORICAL_START_TIME'), "%Y-%m-%d"
+        ).replace(tzinfo=timezone.utc),
+        'historical_end_time': datetime.strptime(
+            os.getenv("HISTORICAL_END_TIME"),"%Y-%m-%d"
+        ).replace(tzinfo=timezone.utc)
     }
 
 def load_order_configs() -> dict[str, any]:

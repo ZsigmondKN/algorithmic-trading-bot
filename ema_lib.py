@@ -60,7 +60,6 @@ def add_ema_trade_parameters_to_dataframe(
     dataframe["stop_loss"] = float("nan")
     dataframe["entry_price"] = float("nan")
     dataframe["take_profit"] = float("nan")
-    dataframe["valid_trade"] = False
 
     crosses = dataframe.index[dataframe["ema_cross"]]
     
@@ -95,7 +94,6 @@ def add_ema_trade_parameters_to_dataframe(
         else:
             raise ValueError(f"Unrecognised order type of '{order_type}' assigned to ema cross.")
 
-        dataframe.loc[i, 'valid_trade'] = True
         dataframe.loc[i, 'stop_loss'] = stop_loss
         dataframe.loc[i, 'entry_price'] = entry_price
         dataframe.loc[i, 'take_profit'] = take_profit
@@ -125,11 +123,17 @@ def create_ema_dataframe(
 
     return candle_dataframe
 
-def log_ema_crosses(ema_df: pd.DataFrame) -> None:
-    ema_df_cross = ema_df[ema_df["ema_cross"]]
+def log_ema_crosses(ema_df: pd.DataFrame, verbose: bool = False) -> None:
+    ema_df_cross = ema_df[ema_df["ema_cross"]].copy()
+    if not verbose:
+        ema_df_cross = ema_df_cross.drop(
+            columns = ["high", "low", "tick_volume", "spread", "real_volume"]
+        )
+        logging.info("EMA dataframe (concise):")
+    else:
+        logging.info("EMA dataframe (verbose):")
 
-    logging.info(f"EMA dataframe:")
-    print(ema_df_cross)
+    print(ema_df_cross.round(2).to_string(index=False))
 
 def plot_ema_charts(
     ema_df: pd.DataFrame,
@@ -137,49 +141,128 @@ def plot_ema_charts(
     ema_period_two: int,
 ) -> None:
     for symbol, symbol_df in ema_df.groupby("symbol"):
-        plot_datetime = pd.to_datetime(
+
+        symbol_df = symbol_df.copy()
+
+        # Create a full UTC datetime column
+        symbol_df["datetime"] = pd.to_datetime(
             symbol_df["date"].astype(str)
             + " "
             + symbol_df["time"].astype(str),
-            utc=True
+            utc=True,
+        )
+
+        symbol_df = symbol_df.sort_values("datetime")
+
+        # Identify gaps between candles
+        gap_mask = (
+            symbol_df["datetime"].diff()
+            > pd.Timedelta(hours=2)
+        )
+
+        warmup_period = int(
+            max(ema_period_one, ema_period_two)
+            * EMA_WARMUP_MULTIPLIER
         )
 
         fig, ax = plt.subplots(figsize=(12, 6))
 
+        # Shade EMA warmup period
+        ax.axvspan(
+            symbol_df["datetime"].iloc[0],
+            symbol_df["datetime"].iloc[warmup_period - 1],
+            facecolor="yellow",
+            alpha=0.1,
+            hatch="//",
+            edgecolor="grey",
+            label="EMA warmup",
+        )
+
+        # Shade gaps and break plotted lines
+        for gap_index in symbol_df.index[gap_mask]:
+
+            previous_index = gap_index - 1
+
+            ax.axvspan(
+                symbol_df.loc[previous_index, "datetime"],
+                symbol_df.loc[gap_index, "datetime"],
+                color="grey",
+                alpha=0.1,
+                label="Market closed" 
+                if gap_index == symbol_df.index[gap_mask][0] 
+                else "_nolegend_",
+            )
+
+        # Break lines at gaps
+        plot_columns = [
+            "close",
+            f"ema_{ema_period_one}",
+            f"ema_{ema_period_two}",
+        ]
+
+        symbol_df.loc[gap_mask, plot_columns] = float("nan")
+
+        # Plot price and EMAs
         ax.plot(
-            plot_datetime,
+            symbol_df["datetime"],
             symbol_df["close"],
             label="Price",
+            color="royalblue",
+            linewidth=1.2,
+            alpha=0.8,
         )
 
         ax.plot(
-            plot_datetime,
+            symbol_df["datetime"],
             symbol_df[f"ema_{ema_period_one}"],
             label=f"EMA {ema_period_one}",
+            color="darkorange",
+            linewidth=1.2,
+            alpha=0.8,
         )
 
         ax.plot(
-            plot_datetime,
+            symbol_df["datetime"],
             symbol_df[f"ema_{ema_period_two}"],
             label=f"EMA {ema_period_two}",
+            color="purple",
+            linewidth=1.2,
+            alpha=0.8,
         )
 
         # Mark EMA crosses
         cross_mask = symbol_df["ema_cross"]
+        cross_buy_mask = cross_mask & (symbol_df["order_type"] == "buy_stop")
+        cross_sell_mask = cross_mask & (symbol_df["order_type"] == "sell_stop")
 
         ax.scatter(
-            plot_datetime[cross_mask],
-            symbol_df.loc[cross_mask, "close"],
-            color="red",
-            marker="o",
-            label="EMA Cross",
+            symbol_df.loc[cross_buy_mask, "datetime"],
+            symbol_df.loc[cross_buy_mask, "close"],
+            edgecolors="#004D00", # extra dark green
+            linewidths=1.5,
+            color="green",
+            s=50,
+            marker="^",
+            zorder=10,
+            label="Buy Signal",
         )
 
-        # Let Matplotlib choose the date or time labels
+        ax.scatter(
+            symbol_df.loc[cross_sell_mask, "datetime"],
+            symbol_df.loc[cross_sell_mask, "close"],
+            edgecolors="darkred",
+            linewidths=1.5,
+            color="red",
+            s=50,
+            marker="v",
+            zorder=10,
+            label="Sell Signal",
+        )
+
+        # Configure date/time axis
         locator = mdates.AutoDateLocator()
 
         ax.xaxis.set_major_locator(locator)
-
         ax.xaxis.set_major_formatter(
             mdates.ConciseDateFormatter(locator)
         )
@@ -220,7 +303,7 @@ def generate_ema_report(symbol_configs: dict[str, str], strategy_configs: dict[s
         )
         combined_ema_df = pd.concat([combined_ema_df, symbol_ema_df], ignore_index = True)
 
-    log_ema_crosses(combined_ema_df)
+    log_ema_crosses(ema_df = combined_ema_df, verbose = False)
     plot_ema_charts(
         combined_ema_df, 
         strategy_configs["ema_period_one"], 
