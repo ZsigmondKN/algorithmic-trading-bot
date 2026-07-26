@@ -3,10 +3,11 @@ Author: Zsigmond Kovacs-Nagy
 Description: ...
 """
 
-import os
-from dotenv import load_dotenv
 from datetime import datetime, timezone
+from decimal import Decimal
+from dotenv import load_dotenv
 import logging
+import os
 
 import MetaTrader5 as mt5
 
@@ -22,7 +23,19 @@ LOT_SIZE_CALCULATION_VALUE = 1.0
 ORDER_FULFILL_TIME = mt5.ORDER_TIME_GTC # The order stays in the queue until it is manually canceled
 
 # Backtesting constants
-BACKTEST_TEARSHEET_NAME = "backtest_tearsheet.html"
+NAUTILUS_TO_STANDARD_FX_MULTIPLIER = Decimal("100") # Nautilus default FX units to standard MT5 FX units.
+NAUTILUS_TO_STANDARD_STOCK_MULTIPLIER = Decimal("1") # Nautilus default stock units to standard MT5 FX units.
+NAUTILUS_FX_LOT_SIZE = Decimal("1000") # Standard MT5 FX lot expressed in Nautilus quantity units.
+MT5_TIMEFRAME_TO_NAUTILUS_BAR = {
+    "M1": "1-MINUTE",
+    "M5": "5-MINUTE",
+    "M15": "15-MINUTE",
+    "M30": "30-MINUTE",
+    "H1": "1-HOUR",
+    "H4": "4-HOUR",
+    "D1": "1-DAY",
+}
+MOCK_ACCOUNT_BALANCE = 500000
 
 # EMA strategy constants
 EMA_CROSS_STRATEGY = 'ema_cross_strategy'
@@ -35,6 +48,16 @@ load_dotenv()
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s: %(message)s", datefmt="%H:%M:%S"
 )
+
+def parse_bool(value: str) -> bool:
+    value = value.strip().lower()
+
+    if value in ("true", "yes"):
+        return True
+    if value in ("false", "no"):
+        return False
+    
+    raise ValueError(f"Invalid boolean configuration value: {value}")
 
 def load_mt5_configs() -> dict[str, any]:
     return {
@@ -49,7 +72,7 @@ def load_symbol_configs() -> dict[str, any]:
         'symbols': os.getenv('MT5_SYMBOLS').split(','),
         'timeframe': os.getenv('MT5_TIMEFRAME'),
         'number_of_candles': int(os.getenv('NUMBER_OF_CANDLES')),
-        'historical_timeframe': bool(os.getenv('HISTORICAL_TIMEFRAME')),
+        'historical_timeframe': parse_bool(os.getenv('HISTORICAL_TIMEFRAME')),
         'historical_start_time': datetime.strptime(
             os.getenv('HISTORICAL_START_TIME'), "%Y-%m-%d"
         ).replace(tzinfo=timezone.utc),

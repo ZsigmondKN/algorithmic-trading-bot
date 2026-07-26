@@ -143,16 +143,7 @@ def plot_ema_charts(
     for symbol, symbol_df in ema_df.groupby("symbol"):
 
         symbol_df = symbol_df.copy()
-
-        # Create a full UTC datetime column
-        symbol_df["datetime"] = pd.to_datetime(
-            symbol_df["date"].astype(str)
-            + " "
-            + symbol_df["time"].astype(str),
-            utc=True,
-        )
-
-        symbol_df = symbol_df.sort_values("datetime")
+        symbol_df = mt5_lib.combine_date_time(symbol_df)
 
         # Identify gaps between candles
         gap_mask = (

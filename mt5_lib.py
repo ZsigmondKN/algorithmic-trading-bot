@@ -4,6 +4,7 @@ Description: ...
 """
 
 from datetime import datetime
+from decimal import Decimal
 import logging
 import MetaTrader5 as mt5
 import pandas as pd
@@ -50,13 +51,23 @@ def validate_candles(symbol, candles) -> None:
             f"Failed to retrieve data for {symbol}. Error provided: {mt5.last_error()}"
         )
     
-def time_date_convert(dataframe: pd.DataFrame) -> pd.DataFrame:
+def split_date_time(dataframe: pd.DataFrame) -> pd.DataFrame:
     dataframe["time"] = pd.to_datetime(dataframe["time"], unit="s", utc=True)
 
     dataframe.insert( 0, "date", dataframe["time"].dt.date )
     dataframe["time"] = dataframe["time"].dt.time
     
     return dataframe
+
+def combine_date_time(dataframe: pd.DataFrame)-> pd.Dataframe:
+    dataframe["datetime"] = pd.to_datetime(
+        dataframe["date"].astype(str)
+        + " "
+        + dataframe["time"].astype(str),
+        utc=True,
+    )
+
+    return dataframe.sort_values("datetime")
 
 def collect_current_candlesticks(symbol: str, timeframe: str, number_of_candles: int) -> pd.DataFrame:
     if number_of_candles > MAXIMUM_MT5_CANDLE_COUNT_PER_REQUEST:
@@ -73,7 +84,7 @@ def collect_current_candlesticks(symbol: str, timeframe: str, number_of_candles:
     validate_candles(symbol, candles)
 
     dataframe = pd.DataFrame(candles)
-    dataframe = time_date_convert(dataframe)
+    dataframe = split_date_time(dataframe)
     
     return dataframe
 
@@ -102,7 +113,7 @@ def collect_historical_candlesticks(
         )
 
     dataframe = pd.DataFrame(candles)
-    dataframe = time_date_convert(dataframe)
+    dataframe = split_date_time(dataframe)
 
     return dataframe
 
@@ -127,3 +138,11 @@ def validate_order_type(order_type: str) -> int:
         return mt5.ORDER_TYPE_SELL_STOP
     else:
         raise RuntimeError(f"Unrecognised order type of: {order_type}.")
+
+def get_trade_size_multiplier(symbol: str) -> Decimal:
+    symbol_info = get_symbol_info(symbol)
+
+    if symbol_info.trade_calc_mode == mt5.SYMBOL_CALC_MODE_FOREX:
+        return Decimal("100")
+
+    return Decimal("1")
