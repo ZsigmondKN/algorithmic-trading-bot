@@ -6,6 +6,7 @@ Description: ...
 import logging
 import MetaTrader5 as mt5
 
+import backtest_lib
 import config
 import ema_lib
 import mt5_lib
@@ -21,15 +22,21 @@ def start_up():
 
         mt5_lib.login(mt5_configs)
         mt5_lib.validate_and_initialise_symbols(symbol_configs)
-        
-        ema_lib.generate_ema_report(symbol_configs, strategy_configs)
-        # runtime_lib.run_strategy(symbol_configs, order_configs, strategy_configs)
+
+        trading_mode = mt5_configs["trading_mode"]
+        if trading_mode == "backtesting":
+            backtest_lib.run_backtest(symbol_configs, strategy_configs)
+        elif trading_mode == "live_trading":
+            ema_lib.generate_ema_report(symbol_configs, strategy_configs)
+            runtime_lib.run_strategy(symbol_configs, order_configs, strategy_configs)
+        else:
+            raise RuntimeError(f"Unexpected trading mode of {trading_mode} selected.")
 
 if __name__ == '__main__':
     try:
         start_up()
     except KeyboardInterrupt:
-        logging.info("Shutdowwn request by user.")
+        logging.info("Shutdown request by user.")
     except Exception as e:
         logging.exception("Unhandled exception.")
     finally:

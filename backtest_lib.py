@@ -3,6 +3,7 @@ Author: Zsigmond Kovacs-Nagy
 Description: ...
 """
 
+import warnings
 from decimal import Decimal
 
 from nautilus_trader.config import StrategyConfig
@@ -13,14 +14,33 @@ from nautilus_trader.model.enums import OrderSide
 from nautilus_trader.model.identifiers import InstrumentId
 from nautilus_trader.trading.strategy import Strategy
 
+from nautilus_trader.backtest.engine import BacktestEngine
+from nautilus_trader.config import BacktestEngineConfig
+from nautilus_trader.config import LoggingConfig
+from nautilus_trader.model.currencies import USD
+from nautilus_trader.model.enums import AccountType
+from nautilus_trader.model.enums import OmsType
+from nautilus_trader.model.identifiers import Venue
+from nautilus_trader.model.objects import Money
+from nautilus_trader.persistence.wranglers import BarDataWrangler
+from nautilus_trader.test_kit.providers import TestInstrumentProvider
+
+import numpy as np
+import pandas as pd
+from nautilus_trader.analysis import create_tearsheet
+import webbrowser
+import os
+
+from config import BACKTEST_TEARSHEET_NAME
+import mt5_lib
+
 
 class EMACrossConfig(StrategyConfig, frozen=True):
     instrument_id: InstrumentId
     bar_type: BarType
     trade_size: Decimal
-    fast_ema_period: int = 50
-    slow_ema_period: int = 200
-
+    fast_ema_period: int
+    slow_ema_period: int
 
 class EMACross(Strategy):
     def __init__(self, config: EMACrossConfig):
@@ -71,91 +91,74 @@ class EMACross(Strategy):
     def on_stop(self):
         self.close_all_positions(self.config.instrument_id)
 
-import numpy as np
-import pandas as pd
+def run_backtest(
+    strategy_configs: dict,
+    symbol_configs: dict,
+    use_real_account_balance:bool = True
+) -> None:
 
-from nautilus_trader.backtest.engine import BacktestEngine
-from nautilus_trader.config import BacktestEngineConfig
-from nautilus_trader.config import LoggingConfig
-from nautilus_trader.model.currencies import USD
-from nautilus_trader.model.enums import AccountType
-from nautilus_trader.model.enums import OmsType
-from nautilus_trader.model.identifiers import Venue
-from nautilus_trader.model.objects import Money
-from nautilus_trader.persistence.wranglers import BarDataWrangler
-from nautilus_trader.test_kit.providers import TestInstrumentProvider
+    # Create a EUR/USD instrument on the SIM venue
+    EURUSD = TestInstrumentProvider.default_fx_ccy("EUR/USD")
 
-# Create a EUR/USD instrument on the SIM venue
-EURUSD = TestInstrumentProvider.default_fx_ccy("EUR/USD")
+    # Generate synthetic 1-minute bars (random walk around 1.10)
+    rng = np.random.default_rng(42)
+    n = 100_000
+    price = 1.10 + np.cumsum(rng.normal(0, 0.0002, n))
+    spread = np.abs(rng.normal(0, 0.0003, n))
+    bars_df = pd.DataFrame(
+        {
+            "open": price,
+            "high": price + spread,
+            "low": price - spread,
+            "close": price + rng.normal(0, 0.00005, n),
+        },
+        index=pd.date_range("2024-01-01", periods=n, freq="1min", tz="UTC"),
+    )
+    bars_df["high"] = bars_df[["open", "high", "close"]].max(axis=1)
+    bars_df["low"] = bars_df[["open", "low", "close"]].min(axis=1)
 
-# Generate synthetic 1-minute bars (random walk around 1.10)
-rng = np.random.default_rng(42)
-n = 100_000
-price = 1.10 + np.cumsum(rng.normal(0, 0.0002, n))
-spread = np.abs(rng.normal(0, 0.0003, n))
-bars_df = pd.DataFrame(
-    {
-        "open": price,
-        "high": price + spread,
-        "low": price - spread,
-        "close": price + rng.normal(0, 0.00005, n),
-    },
-    index=pd.date_range("2024-01-01", periods=n, freq="1min", tz="UTC"),
-)
-bars_df["high"] = bars_df[["open", "high", "close"]].max(axis=1)
-bars_df["low"] = bars_df[["open", "low", "close"]].min(axis=1)
+    bar_type = BarType.from_str("EUR/USD.SIM-1-MINUTE-LAST-EXTERNAL")
 
-bar_type = BarType.from_str("EUR/USD.SIM-1-MINUTE-LAST-EXTERNAL")
-bars = BarDataWrangler(bar_type, EURUSD).process(bars_df)
+    # suppress insignificant known library warning
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore", message="A value is being set on a copy of a DataFrame or "
+            "Series through chained assignment."
+        )
+        bars = BarDataWrangler(bar_type, EURUSD).process(bars_df.copy())
 
-engine = BacktestEngine(
-    config=BacktestEngineConfig(
-        logging=LoggingConfig(log_level="ERROR"),
-    ),
-)
+    if use_real_account_balance:
+        account_balance = mt5_lib.get_account_balance()
+    else:
+        account_balance = 500000
 
-# Add a simulated FX venue
-SIM = Venue("SIM")
-engine.add_venue(
-    venue=SIM,
-    oms_type=OmsType.NETTING,
-    account_type=AccountType.MARGIN,
-    starting_balances=[Money(1_000_000, USD)],
-    base_currency=USD,
-    default_leverage=Decimal(1),
-)
+    strategy = EMACross(
+        EMACrossConfig(
+            instrument_id=EURUSD.id, #TODO
+            bar_type=bar_type, #TODO
+            trade_size=Decimal(100000), #TODO
+            fast_ema_period=strategy_configs["ema_period_one"],
+            slow_ema_period=strategy_configs["ema_period_two"],
+        ),
+    )
 
-# Add instrument, data, and strategy
-engine.add_instrument(EURUSD)
-engine.add_data(bars)
+    backtest_engin = BacktestEngine(
+        config=BacktestEngineConfig(logging=LoggingConfig(log_level="ERROR"))
+    )
+    backtest_engin.add_venue(
+        venue=Venue("SIM"),
+        oms_type=OmsType.HEDGING,
+        account_type=AccountType.MARGIN,
+        starting_balances=[Money(account_balance, USD)],
+        base_currency=USD,
+        default_leverage=Decimal(1),
+    )
+    backtest_engin.add_instrument(EURUSD)
+    backtest_engin.add_data(bars)
+    backtest_engin.add_strategy(strategy)
 
-strategy = EMACross(
-    EMACrossConfig(
-        instrument_id=EURUSD.id,
-        bar_type=bar_type,
-        trade_size=Decimal(100000),
-    ),
-)
-engine.add_strategy(strategy)
+    backtest_engin.run()
 
-# Run the backtest
-engine.run()
-
-from nautilus_trader.analysis import create_tearsheet
-
-# Generate interactive visual report
-create_tearsheet(
-    engine=engine,
-    output_path="backtest_tearsheet.html",
-)
-
-# Generate reports
-# account_report = engine.trader.generate_account_report(
-#     venue=SIM
-# )
-# order_fills_report = engine.trader.generate_order_fills_report()
-# positions_report = engine.trader.generate_positions_report()
-
-# account_report.to_csv("account_report.csv")
-# order_fills_report.to_csv("order_fills_report.csv")
-# positions_report.to_csv("positions_report.csv")
+    create_tearsheet(engine = backtest_engin, output_path = BACKTEST_TEARSHEET_NAME)
+    report_path = os.path.realpath(BACKTEST_TEARSHEET_NAME)
+    webbrowser.open(report_path)

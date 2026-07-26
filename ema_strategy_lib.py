@@ -33,7 +33,7 @@ def ema_cross_strategy(
 
         if latest_signal["ema_cross"]:
             lot_size = order_lib.calculate_lot_size(
-                balance = order_lib.get_account_balance(),
+                balance = mt5_lib.get_account_balance(),
                 risk_percentage = order_configs["risk_percentage_per_trade"],
                 order_type = latest_signal["order_type"],
                 symbol = symbol,

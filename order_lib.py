@@ -7,28 +7,7 @@ import MetaTrader5 as mt5
 import logging
 
 from config import LOT_SIZE_CALCULATION_VALUE, ORDER_FULFILL_TIME
-
-def get_account_balance() -> float:
-    account_info = mt5.account_info()
-    if account_info is None:
-        raise RuntimeError(f"Unable to retrieve account information: {mt5.last_error()}")
-
-    return account_info.balance
-
-def validate_symbol_info(symbol: str) -> tuple:
-    info = mt5.symbol_info(symbol)
-    if info is None:
-        raise ValueError(f"Unknown symbol: {symbol}")
-    
-    return info
-
-def validate_order_type(order_type: str) -> int:
-    if order_type == 'buy_stop':
-        return mt5.ORDER_TYPE_BUY_STOP
-    elif order_type == 'sell_stop':
-        return mt5.ORDER_TYPE_SELL_STOP
-    else:
-        raise RuntimeError(f"Unrecognised order type of: {order_type}.")
+import mt5_lib
 
 def normalise_price_parameters(
     symbol_info: tuple, stop_loss: float, take_profit: float, entry_price: float
@@ -59,8 +38,8 @@ def calculate_lot_size(
     entry_price: float,
     stop_loss: float
 ) -> float:
-    symbol_info = validate_symbol_info(symbol)
-    valid_order_type = validate_order_type(order_type)
+    symbol_info = mt5_lib.get_symbol_info(symbol)
+    valid_order_type = mt5_lib.validate_order_type(order_type)
     
     # Calculate the loss for a 1.0 lot position
     loss_per_lot = mt5.order_calc_profit(
@@ -104,7 +83,7 @@ def build_order_request(
         "action": mt5.TRADE_ACTION_PENDING,
         "symbol": symbol,
         "volume": lot_size,
-        "type": validate_order_type(order_type),
+        "type": mt5_lib.validate_order_type(order_type),
         "price": entry_price,
         "sl": stop_loss,
         "tp": take_profit,
@@ -136,7 +115,7 @@ def place_order(
     comment: str,
     bypass_order_check: bool = False
 ) -> mt5.OrderSendResult:
-    symbol_info = validate_symbol_info(symbol)
+    symbol_info = mt5_lib.get_symbol_info(symbol)
     normalised_lot_size = normalise_lot_size(symbol_info, lot_size)
     normalised_stop_loss, normalised_take_profit, normalised_entry_price = normalise_price_parameters(
         symbol_info, stop_loss, take_profit, entry_price

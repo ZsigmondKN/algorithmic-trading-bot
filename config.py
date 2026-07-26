@@ -11,6 +11,7 @@ import logging
 import MetaTrader5 as mt5
 
 # MT5 constants
+LOGIN_TIMEOUT = 10000
 MAXIMUM_MT5_CANDLE_COUNT_PER_REQUEST = 50000
 
 # Runtime constants
@@ -19,6 +20,9 @@ STRATEGY_CHECK_FREQUENCY = 10
 # Order placing constants
 LOT_SIZE_CALCULATION_VALUE = 1.0
 ORDER_FULFILL_TIME = mt5.ORDER_TIME_GTC # The order stays in the queue until it is manually canceled
+
+# Backtesting constants
+BACKTEST_TEARSHEET_NAME = "backtest_tearsheet.html"
 
 # EMA strategy constants
 EMA_CROSS_STRATEGY = 'ema_cross_strategy'
@@ -37,6 +41,7 @@ def load_mt5_configs() -> dict[str, any]:
         'username': os.getenv('MT5_USERNAME'),
         'password': os.getenv('MT5_PASSWORD'),
         'server': os.getenv('MT5_SERVER'),
+        'trading_mode': os.getenv('TRADING_MODE')
     }
 
 def load_symbol_configs() -> dict[str, any]:

@@ -8,7 +8,7 @@ import logging
 import MetaTrader5 as mt5
 import pandas as pd
 
-from config import MAXIMUM_MT5_CANDLE_COUNT_PER_REQUEST
+from config import LOGIN_TIMEOUT, MAXIMUM_MT5_CANDLE_COUNT_PER_REQUEST
 
 def login(configs: dict[str, str]) -> None:
     account_username = configs['username']
@@ -18,7 +18,8 @@ def login(configs: dict[str, str]) -> None:
     login_success = mt5.initialize(
         login=int(account_username), 
         password=account_password, 
-        server=account_server
+        server=account_server,
+        timeout=LOGIN_TIMEOUT
     )
 
     if not login_success:
@@ -104,3 +105,25 @@ def collect_historical_candlesticks(
     dataframe = time_date_convert(dataframe)
 
     return dataframe
+
+def get_account_balance() -> float:
+    account_info = mt5.account_info()
+    if account_info is None:
+        raise RuntimeError(f"Unable to retrieve account information: {mt5.last_error()}")
+
+    return account_info.balance
+
+def get_symbol_info(symbol: str) -> tuple:
+    symbol_info = mt5.symbol_info(symbol)
+    if symbol_info is None:
+        raise ValueError(f"Unknown symbol: {symbol}")
+    
+    return symbol_info
+
+def validate_order_type(order_type: str) -> int:
+    if order_type == 'buy_stop':
+        return mt5.ORDER_TYPE_BUY_STOP
+    elif order_type == 'sell_stop':
+        return mt5.ORDER_TYPE_SELL_STOP
+    else:
+        raise RuntimeError(f"Unrecognised order type of: {order_type}.")
