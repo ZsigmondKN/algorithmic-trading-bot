@@ -213,7 +213,7 @@ def run_backtest(
 
         backtest_engine.run()
 
-        tearsheet_name = (f"backtest_tearsheet_{symbol}.html")
+        tearsheet_name = (f".\\reports\\backtest_tearsheet_{symbol}.html")
         create_tearsheet(engine = backtest_engine, output_path = tearsheet_name)
         report_path = os.path.realpath(tearsheet_name)
         webbrowser.open(report_path)

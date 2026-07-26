@@ -133,7 +133,7 @@ def log_ema_crosses(ema_df: pd.DataFrame, verbose: bool = False) -> None:
     else:
         logging.info("EMA dataframe (verbose):")
 
-    print(ema_df_cross.round(2).to_string(index=False))
+    print(ema_df_cross.round(3).to_string(index=False))
 
 def plot_ema_charts(
     ema_df: pd.DataFrame,

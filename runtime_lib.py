@@ -3,7 +3,6 @@ Author: Zsigmond Kovacs-Nagy
 Description: ...
 """
 
-from datetime import datetime
 import MetaTrader5 as mt5
 import logging
 from time import sleep
@@ -55,39 +54,49 @@ def run_strategy(
     trading_strategy = select_trading_strategy(strategy_configs)
     symbols = symbol_configs["symbols"]
     timeframe = symbol_configs["timeframe"]
-    previous_candle_time = None
+    previous_candle_times = {
+        symbol: None
+        for symbol in symbols
+    }
 
     while True:
-        current_candle = mt5_lib.collect_current_candlesticks(
-            symbol=symbols[0],
-            timeframe=timeframe,
-            number_of_candles=1
-        )
-        current_candle_time = current_candle.iloc[0]["time"]
-
         # if order was not placed in the span of the STRATEGY_CHECK_FREQUENCY, cancel the order
         order_lib.cancel_all_pending_orders()
 
         has_active_position = mt5.positions_total() > 0
 
-        if current_candle_time != previous_candle_time and not has_active_position:
-            previous_candle_time = current_candle_time
-
-            new_order_placed, report = trading_strategy(
-                symbol_configs,
-                order_configs,
-                strategy_configs
+        for symbol in symbols:
+            current_candle = mt5_lib.collect_current_candlesticks(
+                symbol=symbol,
+                timeframe=timeframe,
+                number_of_candles=1
             )
-            if new_order_placed:
-                logging.info(report)
+            current_candle = mt5_lib.combine_date_time(current_candle)
+            current_candle_time = current_candle.iloc[0]["datetime"]
+
+            is_new_candle = (
+                current_candle_time != previous_candle_times[symbol]
+            )
+
+            if is_new_candle and not has_active_position:
+                previous_candle_times[symbol] = current_candle_time
+
+                new_order_placed, report = trading_strategy(
+                    symbol,
+                    symbol_configs,
+                    order_configs,
+                    strategy_configs
+                )
+                if new_order_placed:
+                    logging.info(report)
+                else:
+                    logging.debug(report)
+
             else:
-                logging.debug(report)
-
-        else:
-            logging.debug(
-                f"No new candle. Current completed candle: "
-                f"{datetime.fromtimestamp(current_candle_time)}"
-            )
+                logging.debug(
+                    f"No new candle for {symbol}. "
+                    f"Current completed candle: {current_candle_time}"
+                )
 
         # TODO for the future: I would prefer to have the interval computed so the while loop only 
         # ran a few seconds after each new candle.

@@ -9,7 +9,10 @@ import logging
 import MetaTrader5 as mt5
 import pandas as pd
 
-from config import LOGIN_TIMEOUT, MAXIMUM_MT5_CANDLE_COUNT_PER_REQUEST
+from config import (
+    LOGIN_TIMEOUT, MAXIMUM_MT5_CANDLE_COUNT_PER_REQUEST, 
+    NAUTILUS_TO_STANDARD_FX_MULTIPLIER, NAUTILUS_TO_STANDARD_STOCK_MULTIPLIER
+)
 
 def login(configs: dict[str, str]) -> None:
     account_username = configs['username']
@@ -143,6 +146,6 @@ def get_trade_size_multiplier(symbol: str) -> Decimal:
     symbol_info = get_symbol_info(symbol)
 
     if symbol_info.trade_calc_mode == mt5.SYMBOL_CALC_MODE_FOREX:
-        return Decimal("100")
+        return NAUTILUS_TO_STANDARD_FX_MULTIPLIER
 
-    return Decimal("1")
+    return NAUTILUS_TO_STANDARD_STOCK_MULTIPLIER
