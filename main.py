@@ -25,7 +25,11 @@ def start_up():
 
         trading_mode = mt5_configs["trading_mode"]
         if trading_mode == "backtesting":
-            backtest_lib.run_backtest(symbol_configs, strategy_configs)
+            backtest_lib.run_backtest(
+                symbol_configs,
+                order_configs,
+                strategy_configs,
+            )
         elif trading_mode == "live_trading":
             ema_lib.generate_ema_report(symbol_configs, strategy_configs)
             runtime_lib.run_strategy(symbol_configs, order_configs, strategy_configs)

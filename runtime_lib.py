@@ -78,6 +78,7 @@ def run_strategy(
                 current_candle_time != previous_candle_times[symbol]
             )
 
+            # TODO This part still missalignes with the backtesting strategy.
             if is_new_candle and not has_active_position:
                 previous_candle_times[symbol] = current_candle_time
 

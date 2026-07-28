@@ -11,99 +11,139 @@ from decimal import Decimal
 from nautilus_trader.analysis import create_tearsheet
 from nautilus_trader.backtest.engine import BacktestEngine
 from nautilus_trader.config import BacktestEngineConfig, LoggingConfig, StrategyConfig
-from nautilus_trader.indicators import ExponentialMovingAverage
 from nautilus_trader.model.currencies import USD
 from nautilus_trader.model.data import Bar, BarType
-from nautilus_trader.model.enums import AccountType, OmsType, OrderSide
+from nautilus_trader.model.enums import AccountType, OmsType, OrderSide, OrderType
 from nautilus_trader.model.identifiers import InstrumentId, Venue
 from nautilus_trader.model.objects import Money
 from nautilus_trader.persistence.wranglers import BarDataWrangler
 from nautilus_trader.test_kit.providers import TestInstrumentProvider
 from nautilus_trader.trading.strategy import Strategy
+import pandas as pd
 
 from config import (
     MOCK_ACCOUNT_BALANCE, MT5_TIMEFRAME_TO_NAUTILUS_BAR,
-    NAUTILUS_FX_LOT_SIZE,NAUTILUS_TO_STANDARD_FX_MULTIPLIER,
+    NAUTILUS_TO_STANDARD_FX_MULTIPLIER,
 )
+import ema_lib
 import mt5_lib
+import order_lib
 
 class EMACrossConfig(StrategyConfig, frozen=True):
     instrument_id: InstrumentId
     bar_type: BarType
-    trade_size: Decimal
-    trade_size_multiplier: Decimal
-    fast_ema_period: int
-    slow_ema_period: int
+    symbol: str
+    risk_percentage: float
+    lot_to_quantity_multiplier: Decimal
+    ema_df: pd.DataFrame
 
 class EMACross(Strategy):
     def __init__(self, config: EMACrossConfig):
         super().__init__(config)
-        self.fast_ema = ExponentialMovingAverage(config.fast_ema_period)
-        self.slow_ema = ExponentialMovingAverage(config.slow_ema_period)
+
+        self.ema_df = config.ema_df
+        self.current_row = 0
 
     def on_start(self):
-        self.register_indicator_for_bars(self.config.bar_type, self.fast_ema)
-        self.register_indicator_for_bars(self.config.bar_type, self.slow_ema)
         self.subscribe_bars(self.config.bar_type)
 
     def on_bar(self, bar: Bar):
-        if not self.indicators_initialized():
+        if self.current_row >= len(self.ema_df):
             return
 
-        if self.fast_ema.value >= self.slow_ema.value:
-            if self.portfolio.is_flat(self.config.instrument_id):
-                self.buy()
-            elif self.portfolio.is_net_short(self.config.instrument_id):
+        signal = self.ema_df.iloc[self.current_row]
+        self.current_row += 1
+
+        if not signal["ema_cross"]:
+            return
+
+        if signal["order_type"] == "buy_stop":
+
+            if self.portfolio.is_net_short(self.config.instrument_id):
                 self.close_all_positions(self.config.instrument_id)
-                self.buy()
-        elif self.fast_ema.value < self.slow_ema.value:
+
             if self.portfolio.is_flat(self.config.instrument_id):
-                self.sell()
-            elif self.portfolio.is_net_long(self.config.instrument_id):
+                self.buy(
+                    signal["entry_price"],
+                    signal["stop_loss"],
+                    signal["take_profit"],
+                )
+
+        elif signal["order_type"] == "sell_stop":
+
+            if self.portfolio.is_net_long(self.config.instrument_id):
                 self.close_all_positions(self.config.instrument_id)
-                self.sell()
 
-    def buy(self):
-        instrument = self.cache.instrument(
-            self.config.instrument_id
+            if self.portfolio.is_flat(self.config.instrument_id):
+                self.sell(
+                    signal["entry_price"],
+                    signal["stop_loss"],
+                    signal["take_profit"],
+                )
+
+    def _calculate_quantity(
+        self,
+        instrument,
+        order_type: str,
+        entry_price: float,
+        stop_loss: float,
+    ):
+        account = self.portfolio.account(self.config.instrument_id.venue)
+
+        balance = account.balance_total().as_double()
+
+        lot_size = order_lib.calculate_lot_size_backtest(
+            balance=balance,
+            risk_percentage=self.config.risk_percentage,
+            instrument=instrument,
+            entry_price=entry_price,
+            stop_loss=stop_loss,
         )
 
-        # Convert the configured strategy quantity into the quantity expected by
-        # the selected instrument. The multiplier is determined from the symbol's
-        # MT5 metadata, allowing different asset classes to use different quantity
-        # scales.
-        quantity = instrument.make_qty(
-            self.config.trade_size * self.config.trade_size_multiplier
+        return instrument.make_qty(
+            Decimal(str(lot_size)) * self.config.lot_to_quantity_multiplier
         )
 
-        order = self.order_factory.market(
-            self.config.instrument_id,
-            OrderSide.BUY,
-            quantity,
+    def buy(self, entry_price, stop_loss, take_profit):
+        instrument = self.cache.instrument(self.config.instrument_id)
+
+
+        quantity = self._calculate_quantity(instrument, "buy_stop", entry_price, stop_loss)
+
+        entry_price = instrument.make_price(entry_price)
+        stop_loss = instrument.make_price(stop_loss)
+        take_profit = instrument.make_price(take_profit)
+
+        orders = self.order_factory.bracket(
+            instrument_id=self.config.instrument_id,
+            order_side=OrderSide.BUY,
+            quantity=quantity,
+            entry_order_type=OrderType.MARKET,
+            sl_trigger_price=stop_loss,
+            tp_price=take_profit,
         )
 
-        self.submit_order(order)
+        self.submit_order_list(orders)
 
-    def sell(self):
-        instrument = self.cache.instrument(
-            self.config.instrument_id
+    def sell(self, entry_price, stop_loss, take_profit):
+        instrument = self.cache.instrument(self.config.instrument_id)
+
+        quantity = self._calculate_quantity(instrument, "sell_stop", entry_price, stop_loss)
+
+        entry_price = instrument.make_price(entry_price)
+        stop_loss = instrument.make_price(stop_loss)
+        take_profit = instrument.make_price(take_profit)
+
+        orders = self.order_factory.bracket(
+            instrument_id=self.config.instrument_id,
+            order_side=OrderSide.SELL,
+            quantity=quantity,
+            entry_order_type=OrderType.MARKET, #TODO not exactly like my code
+            sl_trigger_price=stop_loss,
+            tp_price=take_profit,
         )
 
-        # Convert the configured strategy quantity into the quantity expected by
-        # the selected instrument. The multiplier is determined from the symbol's
-        # MT5 metadata, allowing different asset classes to use different quantity
-        # scales.
-        quantity = instrument.make_qty(
-            self.config.trade_size * self.config.trade_size_multiplier
-        )
-
-        order = self.order_factory.market(
-            self.config.instrument_id,
-            OrderSide.SELL,
-            quantity,
-        )
-
-        self.submit_order(order)
+        self.submit_order_list(orders)
 
     def on_stop(self):
         self.close_all_positions(self.config.instrument_id)
@@ -127,10 +167,11 @@ def run_symbol_backtest(
     backtest_engine,
     symbol,
     symbol_configs,
+    order_configs,
     strategy_configs,
-    trade_size_multiplier
+    lot_to_quantity_multiplier
 ):
-    if trade_size_multiplier == NAUTILUS_TO_STANDARD_FX_MULTIPLIER:
+    if lot_to_quantity_multiplier == NAUTILUS_TO_STANDARD_FX_MULTIPLIER:
         instrument = TestInstrumentProvider.default_fx_ccy(symbol)
     else:
         instrument = TestInstrumentProvider.equity(symbol, venue="SIM")
@@ -150,9 +191,14 @@ def run_symbol_backtest(
         )
 
     candles_df = mt5_lib.combine_date_time(candles_df)
-    candles_df = candles_df.set_index("datetime")
+    ema_df = ema_lib.create_ema_dataframe(
+        symbol,
+        candles_df.copy(),
+        strategy_configs["ema_period_one"],
+        strategy_configs["ema_period_two"],
+    ).set_index("datetime")
 
-    ohlc_df = candles_df[["open", "high", "low", "close"]].astype(float)
+    # ohlc_df = candles_df[["open", "high", "low", "close"]].astype(float)
 
     bar_time = MT5_TIMEFRAME_TO_NAUTILUS_BAR[symbol_configs["timeframe"]]
     bar_type = BarType.from_str(f"{symbol}.SIM-{bar_time}-LAST-EXTERNAL")
@@ -166,21 +212,18 @@ def run_symbol_backtest(
             ),
         )
 
-        bars = BarDataWrangler(bar_type, instrument).process(ohlc_df.copy())
+        bars = BarDataWrangler(bar_type, instrument).process(
+            ema_df[["open", "high", "low", "close"]]
+        )
 
     strategy = EMACross(
         EMACrossConfig(
             instrument_id=instrument.id,
             bar_type=bar_type,
-
-            # Strategy trade size is expressed in Nautilus FX quantity units.
-            # 1,000 Nautilus units are converted to 100,000 base-currency
-            # units at order creation, equivalent to 1 standard MT5 lot.
-            trade_size=NAUTILUS_FX_LOT_SIZE,
-            trade_size_multiplier=trade_size_multiplier,
-
-            fast_ema_period=strategy_configs["ema_period_one"],
-            slow_ema_period=strategy_configs["ema_period_two"],
+            symbol=symbol,
+            risk_percentage=order_configs["risk_percentage_per_trade"],
+            lot_to_quantity_multiplier=lot_to_quantity_multiplier,
+            ema_df=ema_df,
         ),
     )
 
@@ -190,6 +233,7 @@ def run_symbol_backtest(
 
 def run_backtest(
     symbol_configs: dict,
+    order_configs: dict,
     strategy_configs: dict,
     use_real_account_balance: bool = True,
 ) -> None:
@@ -200,15 +244,16 @@ def run_backtest(
         account_balance = MOCK_ACCOUNT_BALANCE
 
     for symbol in symbol_configs["symbols"]:
-        trade_size_multiplier = mt5_lib.get_trade_size_multiplier(symbol)
+        lot_to_quantity_multiplier = mt5_lib.get_lot_to_quantity_multiplier(symbol)
         backtest_engine = create_backtest_engine(account_balance)
 
         run_symbol_backtest(
             backtest_engine,
             symbol,
             symbol_configs,
+            order_configs,
             strategy_configs,
-            trade_size_multiplier
+            lot_to_quantity_multiplier
         )
 
         backtest_engine.run()

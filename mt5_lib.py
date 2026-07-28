@@ -62,7 +62,7 @@ def split_date_time(dataframe: pd.DataFrame) -> pd.DataFrame:
     
     return dataframe
 
-def combine_date_time(dataframe: pd.DataFrame)-> pd.Dataframe:
+def combine_date_time(dataframe: pd.DataFrame)-> pd.DataFrame:
     dataframe["datetime"] = pd.to_datetime(
         dataframe["date"].astype(str)
         + " "
@@ -142,10 +142,16 @@ def validate_order_type(order_type: str) -> int:
     else:
         raise RuntimeError(f"Unrecognised order type of: {order_type}.")
 
-def get_trade_size_multiplier(symbol: str) -> Decimal:
+def get_lot_to_quantity_multiplier(symbol: str) -> Decimal:
     symbol_info = get_symbol_info(symbol)
 
     if symbol_info.trade_calc_mode == mt5.SYMBOL_CALC_MODE_FOREX:
         return NAUTILUS_TO_STANDARD_FX_MULTIPLIER
 
-    return NAUTILUS_TO_STANDARD_STOCK_MULTIPLIER
+    if symbol_info.trade_calc_mode == mt5.SYMBOL_CALC_MODE_EXCH_STOCKS:
+        return NAUTILUS_TO_STANDARD_STOCK_MULTIPLIER
+
+    raise ValueError(
+        f"Unsupported trade calculation mode {symbol_info.trade_calc_mode} "
+        f"for symbol '{symbol}'."
+    )

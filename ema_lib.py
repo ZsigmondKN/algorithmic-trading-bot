@@ -32,10 +32,10 @@ def add_ema_to_dataframe(dataframe: pd.DataFrame, ema_period: int) -> pd.DataFra
 def add_ema_cross_and_action_to_dataframe(
     dataframe: pd.DataFrame,
     warmup_period: int,
-    smaller_ema_period: int,
-    larger_ema_period: int
+    faster_ema_period: int,
+    slower_ema_period: int
 ) -> pd.DataFrame:
-    is_current_pos_bullish = dataframe[f"ema_{larger_ema_period}"] < dataframe[f"ema_{smaller_ema_period}"]
+    is_current_pos_bullish = dataframe[f"ema_{slower_ema_period}"] < dataframe[f"ema_{faster_ema_period}"]
     is_previous_pos_bullish = is_current_pos_bullish.shift(1)
 
     dataframe['ema_cross'] = is_current_pos_bullish != is_previous_pos_bullish
@@ -52,51 +52,66 @@ def add_ema_cross_and_action_to_dataframe(
 
     return dataframe
 
+def calculate_order_parameters(
+    order_type: str,
+    candle_high: float,
+    candle_low: float,
+    fast_ema: float,
+    slow_ema: float,
+) -> tuple[float | None, float | None, float | None]:
+    if order_type == "buy_stop":
+        stop_loss = min(fast_ema, slow_ema)
+        entry_price = candle_high
+
+        if stop_loss >= entry_price:
+            return None, None, None
+
+        risk = entry_price - stop_loss
+        take_profit = entry_price + risk
+
+    elif order_type == "sell_stop":
+        stop_loss = max(fast_ema, slow_ema)
+        entry_price = candle_low
+
+        if entry_price >= stop_loss:
+            return None, None, None
+
+        risk = stop_loss - entry_price
+        take_profit = entry_price - risk
+
+    else:
+        raise ValueError(
+            f"Unrecognised order type of '{order_type}'assigned to ema cross."
+        )
+
+    return entry_price, stop_loss, take_profit
+
 def add_ema_trade_parameters_to_dataframe(
     dataframe: pd.DataFrame,
-    smaller_ema_period: int,
-    larger_ema_period: int
+    faster_ema_period: int,
+    slower_ema_period: int
 ) -> pd.DataFrame:
     dataframe["stop_loss"] = float("nan")
     dataframe["entry_price"] = float("nan")
     dataframe["take_profit"] = float("nan")
 
     crosses = dataframe.index[dataframe["ema_cross"]]
-    
+
     for i in crosses:
-        order_type = dataframe.loc[i, 'order_type']
-        if order_type == "buy_stop":
-            stop_loss = min(
-                dataframe.loc[i, f"ema_{smaller_ema_period}"],
-                dataframe.loc[i, f"ema_{larger_ema_period}"],
-            )
-            entry_price = dataframe.loc[i, 'high']
-            valid_trade = stop_loss < entry_price
+        entry_price, stop_loss, take_profit = calculate_order_parameters(
+            order_type = dataframe.loc[i, "order_type"],
+            candle_high = dataframe.loc[i, "high"],
+            candle_low = dataframe.loc[i, "low"],
+            fast_ema = dataframe.loc[i, f"ema_{faster_ema_period}"],
+            slow_ema = dataframe.loc[i, f"ema_{slower_ema_period}"],
+        )
 
-            if not valid_trade:
-                continue
+        if entry_price is None:
+            continue
 
-            diff = entry_price - stop_loss
-            take_profit = entry_price + diff
-        elif order_type == "sell_stop":
-            stop_loss = max(
-                dataframe.loc[i, f"ema_{smaller_ema_period}"],
-                dataframe.loc[i, f"ema_{larger_ema_period}"],
-            )
-            entry_price = dataframe.loc[i, 'low']
-            valid_trade = entry_price < stop_loss
-
-            if not valid_trade:
-                continue
-
-            diff = stop_loss - entry_price
-            take_profit = entry_price - diff
-        else:
-            raise ValueError(f"Unrecognised order type of '{order_type}' assigned to ema cross.")
-
-        dataframe.loc[i, 'stop_loss'] = stop_loss
-        dataframe.loc[i, 'entry_price'] = entry_price
-        dataframe.loc[i, 'take_profit'] = take_profit
+        dataframe.loc[i, "entry_price"] = entry_price
+        dataframe.loc[i, "stop_loss"] = stop_loss
+        dataframe.loc[i, "take_profit"] = take_profit
 
     return dataframe
 
@@ -106,19 +121,19 @@ def create_ema_dataframe(
     ema_period_one: int,
     ema_period_two: int,
 ) -> pd.DataFrame:
-    smaller_ema_period, larger_ema_period = check_and_order_emas(ema_period_one, ema_period_two)
-    warmup_period = int(max(smaller_ema_period, larger_ema_period) * EMA_WARMUP_MULTIPLIER)
+    faster_ema_period, slower_ema_period = check_and_order_emas(ema_period_one, ema_period_two)
+    warmup_period = int(max(faster_ema_period, slower_ema_period) * EMA_WARMUP_MULTIPLIER)
 
     candle_dataframe.insert(0, "symbol", symbol)
 
     # add EMA values and trade parameters
-    candle_dataframe = add_ema_to_dataframe(candle_dataframe, smaller_ema_period)
-    candle_dataframe = add_ema_to_dataframe(candle_dataframe, larger_ema_period)
+    candle_dataframe = add_ema_to_dataframe(candle_dataframe, faster_ema_period)
+    candle_dataframe = add_ema_to_dataframe(candle_dataframe, slower_ema_period)
     candle_dataframe = add_ema_cross_and_action_to_dataframe(
-        candle_dataframe, warmup_period, smaller_ema_period, larger_ema_period
+        candle_dataframe, warmup_period, faster_ema_period, slower_ema_period
     )
     candle_dataframe = add_ema_trade_parameters_to_dataframe(
-        candle_dataframe, smaller_ema_period, larger_ema_period
+        candle_dataframe, faster_ema_period, slower_ema_period
     )
 
     return candle_dataframe

@@ -3,10 +3,12 @@ Author: Zsigmond Kovacs-Nagy
 Description: ...
 """
 
+from decimal import Decimal
+
 import MetaTrader5 as mt5
 import logging
 
-from config import LOT_SIZE_CALCULATION_VALUE, ORDER_FULFILL_TIME
+from config import LOT_SIZE_CALCULATION_VALUE, NAUTILUS_FX_LOT_SIZE, ORDER_FULFILL_TIME
 import mt5_lib
 
 def normalise_price_parameters(
@@ -30,7 +32,7 @@ def normalise_lot_size(symbol_info: tuple, lot_size: float) -> float:
 
     return lot_size
 
-def calculate_lot_size(
+def calculate_lot_size_mt5(
     balance: float,
     risk_percentage: float,
     order_type: str,
@@ -69,6 +71,30 @@ def calculate_lot_size(
     lot_size = normalise_lot_size(symbol_info, lot_size)
 
     return lot_size
+
+#TODO use one logic for live and test
+def calculate_lot_size_backtest(
+    balance: float,
+    risk_percentage: float,
+    instrument,
+    entry_price: float,
+    stop_loss: float,
+) -> Decimal:
+
+    risk_amount = balance * risk_percentage
+    price_risk = abs(entry_price - stop_loss)
+    if price_risk <= 0:
+        raise ValueError("Entry price and stop loss cannot be equal.")
+
+    if instrument.asset_class.name == "FX":
+        units_per_lot = float(NAUTILUS_FX_LOT_SIZE)
+    else:
+        units_per_lot = float(instrument.lot_size)
+
+    loss_per_lot = price_risk * units_per_lot
+    lot_size = risk_amount / loss_per_lot
+
+    return Decimal(str(lot_size))
 
 def build_order_request(
     symbol: str,
