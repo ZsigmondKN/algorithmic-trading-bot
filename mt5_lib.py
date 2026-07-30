@@ -134,6 +134,14 @@ def get_symbol_info(symbol: str) -> tuple:
     
     return symbol_info
 
+def validate_order_direction(order_type: str) -> int:
+    if order_type == 'buy_stop':
+        return mt5.ORDER_TYPE_BUY
+    elif order_type == 'sell_stop':
+        return mt5.ORDER_TYPE_SELL
+    else:
+        raise RuntimeError(f"Unrecognised order type of: {order_type}.")
+
 def validate_order_type(order_type: str) -> int:
     if order_type == 'buy_stop':
         return mt5.ORDER_TYPE_BUY_STOP
@@ -142,16 +150,13 @@ def validate_order_type(order_type: str) -> int:
     else:
         raise RuntimeError(f"Unrecognised order type of: {order_type}.")
 
-def get_lot_to_quantity_multiplier(symbol: str) -> Decimal:
+def get_lot_to_quantity_multiplier(symbol: str) -> float:
     symbol_info = get_symbol_info(symbol)
+    contract_size = symbol_info.trade_contract_size
 
-    if symbol_info.trade_calc_mode == mt5.SYMBOL_CALC_MODE_FOREX:
-        return NAUTILUS_TO_STANDARD_FX_MULTIPLIER
+    if contract_size <= 0:
+        raise ValueError(
+            f"Invalid trade_contract_size={contract_size} for '{symbol}'."
+        )
 
-    if symbol_info.trade_calc_mode == mt5.SYMBOL_CALC_MODE_EXCH_STOCKS:
-        return NAUTILUS_TO_STANDARD_STOCK_MULTIPLIER
-
-    raise ValueError(
-        f"Unsupported trade calculation mode {symbol_info.trade_calc_mode} "
-        f"for symbol '{symbol}'."
-    )
+    return Decimal(str(contract_size))

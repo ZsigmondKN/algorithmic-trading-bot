@@ -32,27 +32,31 @@ def ema_cross_strategy(
     latest_signal = ema_df.iloc[-1]
 
     if latest_signal["ema_cross"]:
-        lot_size = order_lib.calculate_lot_size_mt5(
+        lot_size = order_lib.calculate_lot_size(
             balance = mt5_lib.get_account_balance(),
             risk_percentage = order_configs["risk_percentage_per_trade"],
+            max_margin_utilisation = order_configs["max_margin_utilisation"],
             order_type = latest_signal["order_type"],
             symbol = symbol,
             entry_price = latest_signal["entry_price"],
             stop_loss = latest_signal["stop_loss"]
         )
-        order_outcome = order_lib.place_order(
-            symbol = symbol,
-            lot_size = lot_size,
-            order_type = latest_signal["order_type"],
-            entry_price = latest_signal["entry_price"],
-            stop_loss = latest_signal["stop_loss"],
-            take_profit = latest_signal["take_profit"],
-            comment = f"EMA_Cross_Strategy_{symbol}",
-            bypass_order_check = False
-        )
-        
-        order_placed = True
-        report += f"New order submitted. The order response is:\n {order_outcome}\n"
+        if lot_size:
+            order_outcome = order_lib.place_order(
+                symbol = symbol,
+                lot_size = lot_size,
+                order_type = latest_signal["order_type"],
+                entry_price = latest_signal["entry_price"],
+                stop_loss = latest_signal["stop_loss"],
+                take_profit = latest_signal["take_profit"],
+                comment = f"EMA_Cross_Strategy_{symbol}",
+                bypass_order_check = False
+            )
+            
+            order_placed = True
+            report += f"New order submitted. The order response is:\n {order_outcome}\n"
+        else:
+            report += f"New order exceeds user defined margin requirements.\n"
     else:
         report += "The EMA values did not cross and so no order was placed.\n"
     

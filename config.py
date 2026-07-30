@@ -25,7 +25,6 @@ ORDER_FULFILL_TIME = mt5.ORDER_TIME_GTC # The order stays in the queue until it 
 # Backtesting constants
 NAUTILUS_TO_STANDARD_FX_MULTIPLIER = Decimal("100") # Nautilus default FX units to standard MT5 FX units.
 NAUTILUS_TO_STANDARD_STOCK_MULTIPLIER = Decimal("1") # Nautilus default stock units to standard MT5 FX units.
-NAUTILUS_FX_LOT_SIZE = Decimal("1000") # Standard MT5 FX lot expressed in Nautilus quantity units.
 MT5_TIMEFRAME_TO_NAUTILUS_BAR = {
     "M1": "1-MINUTE",
     "M5": "5-MINUTE",
@@ -83,7 +82,8 @@ def load_symbol_configs() -> dict[str, any]:
 
 def load_order_configs() -> dict[str, any]:
     return {
-        'risk_percentage_per_trade': float(os.getenv('RISK_PERCENTAGE_PER_TRADE'))
+        'risk_percentage_per_trade': float(os.getenv('RISK_PERCENTAGE_PER_TRADE')),
+        'max_margin_utilisation': float(os.getenv('MAX_MARGIN_UTILISATION'))
     }
 
 def load_strategy_configs() -> dict[str, any]:

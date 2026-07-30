@@ -20,6 +20,7 @@ from nautilus_trader.persistence.wranglers import BarDataWrangler
 from nautilus_trader.test_kit.providers import TestInstrumentProvider
 from nautilus_trader.trading.strategy import Strategy
 import pandas as pd
+import logging
 
 from config import (
     MOCK_ACCOUNT_BALANCE, MT5_TIMEFRAME_TO_NAUTILUS_BAR,
@@ -34,6 +35,7 @@ class EMACrossConfig(StrategyConfig, frozen=True):
     bar_type: BarType
     symbol: str
     risk_percentage: float
+    max_margin_utilisation: float
     lot_to_quantity_multiplier: Decimal
     ema_df: pd.DataFrame
 
@@ -92,13 +94,18 @@ class EMACross(Strategy):
 
         balance = account.balance_total().as_double()
 
-        lot_size = order_lib.calculate_lot_size_backtest(
+        lot_size = order_lib.calculate_lot_size(
             balance=balance,
             risk_percentage=self.config.risk_percentage,
-            instrument=instrument,
+            max_margin_utilisation=self.config.max_margin_utilisation,
+            order_type=order_type,
+            symbol=str(instrument.raw_symbol),
             entry_price=entry_price,
             stop_loss=stop_loss,
         )
+        if not lot_size:
+            logging.warning("New order exceeds user defined margin requirements.")
+            return None
 
         return instrument.make_qty(
             Decimal(str(lot_size)) * self.config.lot_to_quantity_multiplier
@@ -114,16 +121,17 @@ class EMACross(Strategy):
         stop_loss = instrument.make_price(stop_loss)
         take_profit = instrument.make_price(take_profit)
 
-        orders = self.order_factory.bracket(
-            instrument_id=self.config.instrument_id,
-            order_side=OrderSide.BUY,
-            quantity=quantity,
-            entry_order_type=OrderType.MARKET,
-            sl_trigger_price=stop_loss,
-            tp_price=take_profit,
-        )
+        if quantity:
+            orders = self.order_factory.bracket(
+                instrument_id=self.config.instrument_id,
+                order_side=OrderSide.BUY,
+                quantity=quantity,
+                entry_order_type=OrderType.MARKET,
+                sl_trigger_price=stop_loss,
+                tp_price=take_profit,
+            )
 
-        self.submit_order_list(orders)
+            self.submit_order_list(orders)
 
     def sell(self, entry_price, stop_loss, take_profit):
         instrument = self.cache.instrument(self.config.instrument_id)
@@ -134,16 +142,17 @@ class EMACross(Strategy):
         stop_loss = instrument.make_price(stop_loss)
         take_profit = instrument.make_price(take_profit)
 
-        orders = self.order_factory.bracket(
-            instrument_id=self.config.instrument_id,
-            order_side=OrderSide.SELL,
-            quantity=quantity,
-            entry_order_type=OrderType.MARKET, #TODO not exactly like my code
-            sl_trigger_price=stop_loss,
-            tp_price=take_profit,
-        )
+        if quantity:
+            orders = self.order_factory.bracket(
+                instrument_id=self.config.instrument_id,
+                order_side=OrderSide.SELL,
+                quantity=quantity,
+                entry_order_type=OrderType.MARKET, #TODO not exactly like my code
+                sl_trigger_price=stop_loss,
+                tp_price=take_profit,
+            )
 
-        self.submit_order_list(orders)
+            self.submit_order_list(orders)
 
     def on_stop(self):
         self.close_all_positions(self.config.instrument_id)
@@ -158,7 +167,7 @@ def create_backtest_engine(account_balance: float) -> BacktestEngine:
         account_type=AccountType.MARGIN,
         starting_balances=[Money(account_balance, USD)],
         base_currency=USD,
-        default_leverage=Decimal(1),
+        default_leverage=Decimal(100), #TODO enable sensible leveraged orders
     )
 
     return backtest_engine
@@ -171,7 +180,7 @@ def run_symbol_backtest(
     strategy_configs,
     lot_to_quantity_multiplier
 ):
-    if lot_to_quantity_multiplier == NAUTILUS_TO_STANDARD_FX_MULTIPLIER:
+    if lot_to_quantity_multiplier == NAUTILUS_TO_STANDARD_FX_MULTIPLIER: #TODO this could be done better
         instrument = TestInstrumentProvider.default_fx_ccy(symbol)
     else:
         instrument = TestInstrumentProvider.equity(symbol, venue="SIM")
@@ -222,6 +231,7 @@ def run_symbol_backtest(
             bar_type=bar_type,
             symbol=symbol,
             risk_percentage=order_configs["risk_percentage_per_trade"],
+            max_margin_utilisation=order_configs["max_margin_utilisation"],
             lot_to_quantity_multiplier=lot_to_quantity_multiplier,
             ema_df=ema_df,
         ),

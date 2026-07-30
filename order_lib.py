@@ -3,12 +3,10 @@ Author: Zsigmond Kovacs-Nagy
 Description: ...
 """
 
-from decimal import Decimal
-
 import MetaTrader5 as mt5
 import logging
 
-from config import LOT_SIZE_CALCULATION_VALUE, NAUTILUS_FX_LOT_SIZE, ORDER_FULFILL_TIME
+from config import LOT_SIZE_CALCULATION_VALUE, ORDER_FULFILL_TIME
 import mt5_lib
 
 def normalise_price_parameters(
@@ -21,6 +19,34 @@ def normalise_price_parameters(
 
     return stop_loss, take_profit, entry_price
 
+def validate_margin_requirement(
+    balance: float,
+    max_margin_utilisation: float,
+    symbol: str,
+    lot_size: float,
+    entry_price: float,
+    leverage: float = 100 #TODO don't hardcode
+) -> bool:
+    symbol_info = mt5_lib.get_symbol_info(symbol)
+    
+    notional = lot_size * symbol_info.trade_contract_size * entry_price
+
+    required_margin = notional / leverage
+    margin_utilisation = required_margin / balance
+
+    if margin_utilisation > max_margin_utilisation:
+        logging.warning(
+            f"Trade rejected\n"
+            f"Balance={balance:.2f} | "
+            f"Required margin={required_margin:.2f} | "
+            f"Account leverage=1:{leverage:.0f} | "
+            f"Margin utilisation={margin_utilisation:.2%} | "
+            f"Maximum utilisation:={max_margin_utilisation:.2%}"
+        )
+        return False
+
+    return True
+
 def normalise_lot_size(symbol_info: tuple, lot_size: float) -> float:
     if lot_size <= 0:
         raise ValueError(f"Lot size must be positive, got {lot_size}.")
@@ -32,17 +58,18 @@ def normalise_lot_size(symbol_info: tuple, lot_size: float) -> float:
 
     return lot_size
 
-def calculate_lot_size_mt5(
+def calculate_lot_size(
     balance: float,
     risk_percentage: float,
+    max_margin_utilisation: float,
     order_type: str,
     symbol: str,
     entry_price: float,
     stop_loss: float
 ) -> float:
     symbol_info = mt5_lib.get_symbol_info(symbol)
-    valid_order_type = mt5_lib.validate_order_type(order_type)
-    
+    valid_order_type = mt5_lib.validate_order_direction(order_type)
+
     # Calculate the loss for a 1.0 lot position
     loss_per_lot = mt5.order_calc_profit(
         valid_order_type,
@@ -61,40 +88,32 @@ def calculate_lot_size_mt5(
         f"loss_per_lot={loss_per_lot}"
     )
     if loss_per_lot is None:
-        raise RuntimeError(f"MT5 was unable to calculate the loss_per_lot for: {error_log_parameters}.")
+        raise RuntimeError(
+            f"MT5 was unable to calculate the loss_per_lot for: {error_log_parameters}."
+        )
     if loss_per_lot >= 0:
-        raise ValueError(f"The loss_per_lot was expected to be negative, for: {error_log_parameters}.")
-    
+        raise ValueError(
+            f"The loss_per_lot was expected to be negative, for: {error_log_parameters}."
+        )
+        
     abs_loss_per_lot = -loss_per_lot
     risk_amount = balance * risk_percentage
     lot_size = risk_amount / abs_loss_per_lot
     lot_size = normalise_lot_size(symbol_info, lot_size)
 
+    margin_requirements_met = validate_margin_requirement(
+        balance,
+        max_margin_utilisation,
+        symbol,
+        lot_size,
+        entry_price,
+    )
+    
+    #TODO Also add a maximum simultaneous exposure check
+    if not margin_requirements_met:
+        return None
+
     return lot_size
-
-#TODO use one logic for live and test
-def calculate_lot_size_backtest(
-    balance: float,
-    risk_percentage: float,
-    instrument,
-    entry_price: float,
-    stop_loss: float,
-) -> Decimal:
-
-    risk_amount = balance * risk_percentage
-    price_risk = abs(entry_price - stop_loss)
-    if price_risk <= 0:
-        raise ValueError("Entry price and stop loss cannot be equal.")
-
-    if instrument.asset_class.name == "FX":
-        units_per_lot = float(NAUTILUS_FX_LOT_SIZE)
-    else:
-        units_per_lot = float(instrument.lot_size)
-
-    loss_per_lot = price_risk * units_per_lot
-    lot_size = risk_amount / loss_per_lot
-
-    return Decimal(str(lot_size))
 
 def build_order_request(
     symbol: str,
