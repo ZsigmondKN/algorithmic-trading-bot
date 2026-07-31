@@ -8,6 +8,7 @@ import warnings
 import webbrowser
 from decimal import Decimal
 
+import MetaTrader5 as mt5
 from nautilus_trader.analysis import create_tearsheet
 from nautilus_trader.backtest.engine import BacktestEngine
 from nautilus_trader.config import BacktestEngineConfig, LoggingConfig, StrategyConfig
@@ -22,10 +23,7 @@ from nautilus_trader.trading.strategy import Strategy
 import pandas as pd
 import logging
 
-from config import (
-    MOCK_ACCOUNT_BALANCE, MT5_TIMEFRAME_TO_NAUTILUS_BAR,
-    NAUTILUS_TO_STANDARD_FX_MULTIPLIER,
-)
+from config import MOCK_ACCOUNT_BALANCE, MT5_TIMEFRAME_TO_NAUTILUS_BAR
 import ema_lib
 import mt5_lib
 import order_lib
@@ -37,7 +35,7 @@ class EMACrossConfig(StrategyConfig, frozen=True):
     account_leverage: int
     risk_percentage: float
     max_margin_utilisation: float
-    lot_to_quantity_multiplier: Decimal
+    units_per_lot: Decimal
     ema_df: pd.DataFrame
 
 class EMACross(Strategy):
@@ -110,7 +108,7 @@ class EMACross(Strategy):
             return None
 
         return instrument.make_qty(
-            Decimal(str(lot_size)) * self.config.lot_to_quantity_multiplier
+            Decimal(str(lot_size)) * self.config.units_per_lot
         )
 
     def buy(self, entry_price, stop_loss, take_profit):
@@ -197,9 +195,10 @@ def run_symbol_backtest(
     symbol_configs,
     order_configs,
     strategy_configs,
-    lot_to_quantity_multiplier
+    units_per_lot
 ):
-    if lot_to_quantity_multiplier == NAUTILUS_TO_STANDARD_FX_MULTIPLIER: #TODO this could be done better
+    symbol_info = mt5_lib.get_symbol_info(symbol)
+    if symbol_info.trade_calc_mode == mt5.SYMBOL_CALC_MODE_FOREX:
         instrument = TestInstrumentProvider.default_fx_ccy(symbol)
     else:
         instrument = TestInstrumentProvider.equity(symbol, venue="SIM")
@@ -226,8 +225,6 @@ def run_symbol_backtest(
         strategy_configs["ema_period_two"],
     ).set_index("datetime")
 
-    # ohlc_df = candles_df[["open", "high", "low", "close"]].astype(float)
-
     bar_time = MT5_TIMEFRAME_TO_NAUTILUS_BAR[symbol_configs["timeframe"]]
     bar_type = BarType.from_str(f"{symbol}.SIM-{bar_time}-LAST-EXTERNAL")
 
@@ -252,7 +249,7 @@ def run_symbol_backtest(
             account_leverage=order_configs["account_leverage"],
             risk_percentage=order_configs["risk_percentage_per_trade"],
             max_margin_utilisation=order_configs["max_margin_utilisation"],
-            lot_to_quantity_multiplier=lot_to_quantity_multiplier,
+            units_per_lot=units_per_lot,
             ema_df=ema_df,
         ),
     )
@@ -274,7 +271,7 @@ def run_backtest(
         account_balance = MOCK_ACCOUNT_BALANCE
 
     for symbol in symbol_configs["symbols"]:
-        lot_to_quantity_multiplier = mt5_lib.get_lot_to_quantity_multiplier(symbol)
+        units_per_lot = mt5_lib.get_units_per_lot(symbol)
         backtest_engine = create_backtest_engine(
             account_balance, 
             order_configs["account_leverage"]
@@ -286,7 +283,7 @@ def run_backtest(
             symbol_configs,
             order_configs,
             strategy_configs,
-            lot_to_quantity_multiplier
+            units_per_lot
         )
 
         backtest_engine.run()

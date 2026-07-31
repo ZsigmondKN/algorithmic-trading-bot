@@ -43,13 +43,12 @@ def validate_margin_requirement(
     margin_utilisation = required_margin / balance
 
     if margin_utilisation > max_margin_utilisation:
-        logging.warning(
-            f"Trade rejected\n"
+        logging.warning( #TODO add to a count so that I can turn this into a debug
+            f"Trade rejected - "
             f"Balance={balance:.2f} | "
             f"Required margin={required_margin:.2f} | "
-            f"Account leverage=1:{leverage:.0f} | "
-            f"Margin utilisation={margin_utilisation:.2%} | "
-            f"Maximum utilisation={max_margin_utilisation:.2%}"
+            f"Required Margin utilisation={margin_utilisation:.2%} | "
+            f"Symbol={symbol}"
         )
         return False
 

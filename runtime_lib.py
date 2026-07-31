@@ -24,10 +24,21 @@ def log_setup_config(
     timeframe = symbol_configs['timeframe']
 
     risk_percentage_per_trade = order_configs['risk_percentage_per_trade']
+    account_leverage = order_configs['account_leverage']
+    max_margin_utilisation = order_configs['max_margin_utilisation']
 
-    logging.info(f"Using account {user_name}, on server {server}.")
-    logging.info(f"Using time frame of {timeframe}, for the following symbols: {symbols}.")
-    logging.info(f"Using a risk percentage per trade of: {risk_percentage_per_trade * 100}%.\n")
+
+    logging.info(
+        f"Using account {user_name}, on server {server}, "
+        f"with leverage of 1:{account_leverage}."
+    )
+    logging.info(
+        f"Using time frame of {timeframe}, for the following symbols: {symbols}."
+    )
+    logging.info(
+        f"Using a risk per trade of {risk_percentage_per_trade * 100}% and"
+        f"a max margin utilisation per trade of {max_margin_utilisation * 100}%.\n"
+    )
 
 def select_trading_strategy(strategy_configs: dict[str, str]):
     if strategy_configs["strategy"] == EMA_CROSS_STRATEGY:

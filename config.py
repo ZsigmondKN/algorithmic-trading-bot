@@ -23,8 +23,6 @@ LOT_SIZE_CALCULATION_VALUE = 1.0
 ORDER_FULFILL_TIME = mt5.ORDER_TIME_GTC # The order stays in the queue until it is manually canceled
 
 # Backtesting constants
-NAUTILUS_TO_STANDARD_FX_MULTIPLIER = Decimal("100") # Nautilus default FX units to standard MT5 FX units.
-NAUTILUS_TO_STANDARD_STOCK_MULTIPLIER = Decimal("1") # Nautilus default stock units to standard MT5 FX units.
 MT5_TIMEFRAME_TO_NAUTILUS_BAR = {
     "M1": "1-MINUTE",
     "M5": "5-MINUTE",

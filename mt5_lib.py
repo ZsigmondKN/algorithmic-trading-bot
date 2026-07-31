@@ -10,11 +10,7 @@ import MetaTrader5 as mt5
 import numpy as np
 import pandas as pd
 
-from config import (
-    LOGIN_TIMEOUT, MAXIMUM_MT5_CANDLE_COUNT_PER_REQUEST, 
-    #TODO remove all mention of these
-    NAUTILUS_TO_STANDARD_FX_MULTIPLIER, NAUTILUS_TO_STANDARD_STOCK_MULTIPLIER
-)
+from config import LOGIN_TIMEOUT, MAXIMUM_MT5_CANDLE_COUNT_PER_REQUEST
 
 def login(configs: dict[str, str]) -> None:
     account_username = configs['username']
@@ -167,7 +163,7 @@ def validate_order_type(order_type: str) -> int:
     else:
         raise RuntimeError(f"Unrecognised order type of: {order_type}.")
 
-def get_lot_to_quantity_multiplier(symbol: str) -> Decimal:
+def get_units_per_lot(symbol: str) -> Decimal:
     symbol_info = get_symbol_info(symbol)
     contract_size = symbol_info.trade_contract_size
 

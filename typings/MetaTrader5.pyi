@@ -12,10 +12,12 @@ ORDER_FILLING_RETURN: int
 TRADE_ACTION_PENDING: int
 TRADE_ACTION_REMOVE: int
 TRADE_RETCODE_DONE: int
+SYMBOL_CALC_MODE_FOREX: int
 
 class SymbolInfo:
     name: str
     trade_contract_size: float
+    trade_calc_mode: int
     digits: int
     volume_step: float
     volume_min: float
