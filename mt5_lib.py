@@ -7,10 +7,12 @@ from datetime import datetime
 from decimal import Decimal
 import logging
 import MetaTrader5 as mt5
+import numpy as np
 import pandas as pd
 
 from config import (
     LOGIN_TIMEOUT, MAXIMUM_MT5_CANDLE_COUNT_PER_REQUEST, 
+    #TODO remove all mention of these
     NAUTILUS_TO_STANDARD_FX_MULTIPLIER, NAUTILUS_TO_STANDARD_STOCK_MULTIPLIER
 )
 
@@ -35,7 +37,9 @@ def validate_and_initialise_symbols(symbol_configs: dict[str, str]) -> None:
 
     for symbol in symbol_configs['symbols']:
         if symbol not in available_symbols:
-            raise ValueError(f"Symbol '{symbol}' not found in this MT5 version. Update symbol name.")
+            raise ValueError(
+                f"Symbol '{symbol}' not found in this MT5 version. Update symbol name."
+            )
         # attempt to initialise the symbol
         if not mt5.symbol_select(symbol, True):
             raise RuntimeError(f"Failed to initialise symbol: {symbol}")
@@ -48,11 +52,13 @@ def validate_timeframe(timeframe: str) -> int:
     except AttributeError:
         raise ValueError(f"Unsupported timeframe: {timeframe}")
     
-def validate_candles(symbol, candles) -> None:
+def validate_candles(symbol, candles) -> np.ndarray:
     if candles is None:
         raise RuntimeError(
             f"Failed to retrieve data for {symbol}. Error provided: {mt5.last_error()}"
         )
+
+    return candles
     
 def split_date_time(dataframe: pd.DataFrame) -> pd.DataFrame:
     dataframe["time"] = pd.to_datetime(dataframe["time"], unit="s", utc=True)
@@ -72,10 +78,15 @@ def combine_date_time(dataframe: pd.DataFrame)-> pd.DataFrame:
 
     return dataframe.sort_values("datetime")
 
-def collect_current_candlesticks(symbol: str, timeframe: str, number_of_candles: int) -> pd.DataFrame:
+def collect_current_candlesticks(
+    symbol: str,
+    timeframe: str,
+    number_of_candles: int
+) -> pd.DataFrame:
     if number_of_candles > MAXIMUM_MT5_CANDLE_COUNT_PER_REQUEST:
         raise ValueError(
-            f"Cannot retrieve more than {MAXIMUM_MT5_CANDLE_COUNT_PER_REQUEST} candlesticks at once."
+            f"Cannot retrieve more than {MAXIMUM_MT5_CANDLE_COUNT_PER_REQUEST} "
+            "candlesticks at once."
         )
 
     mt5_timeframe = validate_timeframe(timeframe)
@@ -83,7 +94,12 @@ def collect_current_candlesticks(symbol: str, timeframe: str, number_of_candles:
     # Skip the current candle
     initial_candle_index = 1
     
-    candles = mt5.copy_rates_from_pos(symbol, mt5_timeframe, initial_candle_index, number_of_candles)
+    candles = mt5.copy_rates_from_pos(
+        symbol,
+        mt5_timeframe,
+        initial_candle_index,
+        number_of_candles
+    )
     validate_candles(symbol, candles)
 
     dataframe = pd.DataFrame(candles)
@@ -108,11 +124,12 @@ def collect_historical_candlesticks(
         start_date,
         end_date
     )
-    validate_candles(symbol, candles)
+    candles = validate_candles(symbol, candles)
 
     if len(candles) == 0:
         raise RuntimeError(
-            f"No historical data was returned for {symbol} between {start_date} and {end_date}."
+            f"No historical data was returned for {symbol} "
+            f"between {start_date} and {end_date}."
         )
 
     dataframe = pd.DataFrame(candles)
@@ -127,7 +144,7 @@ def get_account_balance() -> float:
 
     return account_info.balance
 
-def get_symbol_info(symbol: str) -> tuple:
+def get_symbol_info(symbol: str) -> mt5.SymbolInfo:
     symbol_info = mt5.symbol_info(symbol)
     if symbol_info is None:
         raise ValueError(f"Unknown symbol: {symbol}")
@@ -150,7 +167,7 @@ def validate_order_type(order_type: str) -> int:
     else:
         raise RuntimeError(f"Unrecognised order type of: {order_type}.")
 
-def get_lot_to_quantity_multiplier(symbol: str) -> float:
+def get_lot_to_quantity_multiplier(symbol: str) -> Decimal:
     symbol_info = get_symbol_info(symbol)
     contract_size = symbol_info.trade_contract_size
 

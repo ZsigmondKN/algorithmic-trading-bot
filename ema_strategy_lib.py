@@ -20,13 +20,13 @@ def ema_cross_strategy(
     candle_dataframe = mt5_lib.collect_current_candlesticks(
         symbol,
         symbol_configs["timeframe"],
-        symbol_configs["number_of_candles"]
+        int(symbol_configs["number_of_candles"])
     )
     ema_df = ema_lib.create_ema_dataframe(
         symbol,
         candle_dataframe,
-        strategy_configs["ema_period_one"],
-        strategy_configs["ema_period_two"],
+        int(strategy_configs["ema_period_one"]),
+        int(strategy_configs["ema_period_two"]),
     )
 
     latest_signal = ema_df.iloc[-1]
@@ -34,8 +34,9 @@ def ema_cross_strategy(
     if latest_signal["ema_cross"]:
         lot_size = order_lib.calculate_lot_size(
             balance = mt5_lib.get_account_balance(),
-            risk_percentage = order_configs["risk_percentage_per_trade"],
-            max_margin_utilisation = order_configs["max_margin_utilisation"],
+            account_leverage = int(order_configs["account_leverage"]),
+            risk_percentage = float(order_configs["risk_percentage_per_trade"]),
+            max_margin_utilisation = float(order_configs["max_margin_utilisation"]),
             order_type = latest_signal["order_type"],
             symbol = symbol,
             entry_price = latest_signal["entry_price"],

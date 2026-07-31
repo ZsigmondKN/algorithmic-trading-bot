@@ -34,6 +34,7 @@ class EMACrossConfig(StrategyConfig, frozen=True):
     instrument_id: InstrumentId
     bar_type: BarType
     symbol: str
+    account_leverage: int
     risk_percentage: float
     max_margin_utilisation: float
     lot_to_quantity_multiplier: Decimal
@@ -96,6 +97,7 @@ class EMACross(Strategy):
 
         lot_size = order_lib.calculate_lot_size(
             balance=balance,
+            account_leverage=self.config.account_leverage,
             risk_percentage=self.config.risk_percentage,
             max_margin_utilisation=self.config.max_margin_utilisation,
             order_type=order_type,
@@ -103,7 +105,7 @@ class EMACross(Strategy):
             entry_price=entry_price,
             stop_loss=stop_loss,
         )
-        if not lot_size:
+        if lot_size is None:
             logging.warning("New order exceeds user defined margin requirements.")
             return None
 
@@ -115,49 +117,66 @@ class EMACross(Strategy):
         instrument = self.cache.instrument(self.config.instrument_id)
 
 
-        quantity = self._calculate_quantity(instrument, "buy_stop", entry_price, stop_loss)
+        quantity = self._calculate_quantity(
+            instrument,
+            "buy_stop",
+            entry_price,
+            stop_loss
+        )
 
         entry_price = instrument.make_price(entry_price)
         stop_loss = instrument.make_price(stop_loss)
         take_profit = instrument.make_price(take_profit)
 
-        if quantity:
-            orders = self.order_factory.bracket(
-                instrument_id=self.config.instrument_id,
-                order_side=OrderSide.BUY,
-                quantity=quantity,
-                entry_order_type=OrderType.MARKET,
-                sl_trigger_price=stop_loss,
-                tp_price=take_profit,
-            )
+        if quantity is None:
+            return
+        
+        orders = self.order_factory.bracket(
+            instrument_id=self.config.instrument_id,
+            order_side=OrderSide.BUY,
+            quantity=quantity,
+            entry_order_type=OrderType.MARKET,
+            sl_trigger_price=stop_loss,
+            tp_price=take_profit,
+        )
 
-            self.submit_order_list(orders)
+        self.submit_order_list(orders)
 
     def sell(self, entry_price, stop_loss, take_profit):
         instrument = self.cache.instrument(self.config.instrument_id)
 
-        quantity = self._calculate_quantity(instrument, "sell_stop", entry_price, stop_loss)
+        quantity = self._calculate_quantity(
+            instrument,
+            "sell_stop",
+            entry_price,
+            stop_loss
+        )
 
         entry_price = instrument.make_price(entry_price)
         stop_loss = instrument.make_price(stop_loss)
         take_profit = instrument.make_price(take_profit)
 
-        if quantity:
-            orders = self.order_factory.bracket(
-                instrument_id=self.config.instrument_id,
-                order_side=OrderSide.SELL,
-                quantity=quantity,
-                entry_order_type=OrderType.MARKET, #TODO not exactly like my code
-                sl_trigger_price=stop_loss,
-                tp_price=take_profit,
-            )
+        if quantity is None:
+            return
 
-            self.submit_order_list(orders)
+        orders = self.order_factory.bracket(
+            instrument_id=self.config.instrument_id,
+            order_side=OrderSide.SELL,
+            quantity=quantity,
+            entry_order_type=OrderType.MARKET, #TODO not exactly like my code
+            sl_trigger_price=stop_loss,
+            tp_price=take_profit,
+        )
+
+        self.submit_order_list(orders)
 
     def on_stop(self):
         self.close_all_positions(self.config.instrument_id)
 
-def create_backtest_engine(account_balance: float) -> BacktestEngine:
+def create_backtest_engine(
+    account_balance: float,
+    account_leverage: int
+) -> BacktestEngine:
     backtest_engine = BacktestEngine(
         config=BacktestEngineConfig(logging=LoggingConfig(log_level="ERROR"))
     )
@@ -167,7 +186,7 @@ def create_backtest_engine(account_balance: float) -> BacktestEngine:
         account_type=AccountType.MARGIN,
         starting_balances=[Money(account_balance, USD)],
         base_currency=USD,
-        default_leverage=Decimal(100), #TODO enable sensible leveraged orders
+        default_leverage=Decimal(account_leverage)
     )
 
     return backtest_engine
@@ -230,6 +249,7 @@ def run_symbol_backtest(
             instrument_id=instrument.id,
             bar_type=bar_type,
             symbol=symbol,
+            account_leverage=order_configs["account_leverage"],
             risk_percentage=order_configs["risk_percentage_per_trade"],
             max_margin_utilisation=order_configs["max_margin_utilisation"],
             lot_to_quantity_multiplier=lot_to_quantity_multiplier,
@@ -255,7 +275,10 @@ def run_backtest(
 
     for symbol in symbol_configs["symbols"]:
         lot_to_quantity_multiplier = mt5_lib.get_lot_to_quantity_multiplier(symbol)
-        backtest_engine = create_backtest_engine(account_balance)
+        backtest_engine = create_backtest_engine(
+            account_balance, 
+            order_configs["account_leverage"]
+        )
 
         run_symbol_backtest(
             backtest_engine,

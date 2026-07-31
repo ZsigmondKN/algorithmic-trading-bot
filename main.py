@@ -3,7 +3,9 @@ Author: Zsigmond Kovacs-Nagy
 Description: ...
 """
 
+from dotenv import load_dotenv
 import logging
+
 import MetaTrader5 as mt5
 
 import backtest_lib
@@ -14,6 +16,8 @@ import order_lib
 import runtime_lib
     
 def start_up():
+        load_dotenv()
+
         mt5_configs = config.load_mt5_configs()
         symbol_configs = config.load_symbol_configs()
         order_configs = config.load_order_configs()

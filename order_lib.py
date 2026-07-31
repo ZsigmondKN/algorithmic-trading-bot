@@ -5,12 +5,20 @@ Description: ...
 
 import MetaTrader5 as mt5
 import logging
+from typing import Protocol, TypeVar
+
 
 from config import LOT_SIZE_CALCULATION_VALUE, ORDER_FULFILL_TIME
 import mt5_lib
 
+class MT5Result(Protocol):
+    retcode: int
+    comment: str
+
+T = TypeVar("T", bound=MT5Result)
+
 def normalise_price_parameters(
-    symbol_info: tuple, stop_loss: float, take_profit: float, entry_price: float
+    symbol_info: mt5.SymbolInfo, stop_loss: float, take_profit: float, entry_price: float
 ) -> tuple:
     price_digits = symbol_info.digits
     stop_loss = round(stop_loss, price_digits)
@@ -21,11 +29,11 @@ def normalise_price_parameters(
 
 def validate_margin_requirement(
     balance: float,
+    leverage: float,
     max_margin_utilisation: float,
     symbol: str,
     lot_size: float,
-    entry_price: float,
-    leverage: float = 100 #TODO don't hardcode
+    entry_price: float
 ) -> bool:
     symbol_info = mt5_lib.get_symbol_info(symbol)
     
@@ -41,13 +49,13 @@ def validate_margin_requirement(
             f"Required margin={required_margin:.2f} | "
             f"Account leverage=1:{leverage:.0f} | "
             f"Margin utilisation={margin_utilisation:.2%} | "
-            f"Maximum utilisation:={max_margin_utilisation:.2%}"
+            f"Maximum utilisation={max_margin_utilisation:.2%}"
         )
         return False
 
     return True
 
-def normalise_lot_size(symbol_info: tuple, lot_size: float) -> float:
+def normalise_lot_size(symbol_info: mt5.SymbolInfo, lot_size: float) -> float:
     if lot_size <= 0:
         raise ValueError(f"Lot size must be positive, got {lot_size}.")
     
@@ -60,13 +68,14 @@ def normalise_lot_size(symbol_info: tuple, lot_size: float) -> float:
 
 def calculate_lot_size(
     balance: float,
+    account_leverage: int,
     risk_percentage: float,
     max_margin_utilisation: float,
     order_type: str,
     symbol: str,
     entry_price: float,
     stop_loss: float
-) -> float:
+) -> float | None:
     symbol_info = mt5_lib.get_symbol_info(symbol)
     valid_order_type = mt5_lib.validate_order_direction(order_type)
 
@@ -103,6 +112,7 @@ def calculate_lot_size(
 
     margin_requirements_met = validate_margin_requirement(
         balance,
+        account_leverage,
         max_margin_utilisation,
         symbol,
         lot_size,
@@ -139,16 +149,21 @@ def build_order_request(
 
     return request
 
-def validate_order_request_response(result, action: str) -> None:
+def validate_order_request_response(result: T | None, action: str) -> T:
     if result is None:
         raise RuntimeError(
             f"{action} failed: {mt5.last_error()}."
         )
 
+    assert result is not None
+
     if result.retcode != mt5.TRADE_RETCODE_DONE:
         raise RuntimeError(
-            f"{action} failed with retcode={result.retcode} and comment='{result.comment}'."
+            f"{action} failed with retcode={result.retcode} "
+            f"and comment='{result.comment}'."
         )
+
+    return result
 
 def place_order(
     symbol: str,
@@ -181,7 +196,7 @@ def place_order(
         validate_order_request_response(check_result, "Order check")
     
     order_result = mt5.order_send(request)
-    validate_order_request_response(order_result, "Order submission")
+    order_result = validate_order_request_response(order_result, "Order submission")
     
     return order_result
 
@@ -193,18 +208,14 @@ def cancel_order(order_number: int) -> bool:
     }
 
     try:
-        cancel_order_result = mt5.order_send(cancel_request)
-        if cancel_order_result.retcode == mt5.TRADE_RETCODE_DONE:
-            logging.info(f"Order {order_number} cancelled successfully")
-            return True
-        
-        logging.error(
-            f"Order {order_number} was unable to cancel the order!\n"
-            f"Retcode: {cancel_order_result.retcode}, Comment: {cancel_order_result.comment}\n"
-            f"MT5 error: {mt5.last_error()}, Result: {cancel_order_result}"
+        validate_order_request_response(
+            mt5.order_send(cancel_request),
+            "Order cancellation",
         )
-        return False
-    
+
+        logging.info(f"Order {order_number} cancelled successfully")
+        return True
+
     except Exception:
         logging.exception(f"Unexpected error while cancelling order {order_number}.")
         raise

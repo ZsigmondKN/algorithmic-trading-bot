@@ -5,8 +5,8 @@ Description: ...
 
 from datetime import datetime, timezone
 from decimal import Decimal
-from dotenv import load_dotenv
 import logging
+from typing import Any
 import os
 
 import MetaTrader5 as mt5
@@ -43,9 +43,11 @@ EMA_WARMUP_MULTIPLIER = 1.5
 # Loggigng constants
 LOGGING_INDENT = '                 '
 
-load_dotenv()
+# Logging config
 logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(levelname)s: %(message)s", datefmt="%H:%M:%S"
+    level=logging.INFO, 
+    format="%(asctime)s - %(levelname)s: %(message)s", 
+    datefmt="%H:%M:%S"
 )
 
 def parse_bool(value: str) -> bool:
@@ -58,37 +60,44 @@ def parse_bool(value: str) -> bool:
     
     raise ValueError(f"Invalid boolean configuration value: {value}")
 
-def load_mt5_configs() -> dict[str, any]:
+def getenv_required(name: str) -> str:
+    value = os.getenv(name)
+    if value is None:
+        raise RuntimeError(f"Required environment variable '{name}' is missing.")
+    return value
+
+def load_mt5_configs() -> dict[str, Any]:
     return {
-        'username': os.getenv('MT5_USERNAME'),
-        'password': os.getenv('MT5_PASSWORD'),
-        'server': os.getenv('MT5_SERVER'),
-        'trading_mode': os.getenv('TRADING_MODE')
+        'username': getenv_required('MT5_USERNAME'),
+        'password': getenv_required('MT5_PASSWORD'),
+        'server': getenv_required('MT5_SERVER'),
+        'trading_mode': getenv_required('TRADING_MODE')
     }
 
-def load_symbol_configs() -> dict[str, any]:
+def load_symbol_configs() -> dict[str, Any]:
     return {
-        'symbols': os.getenv('MT5_SYMBOLS').split(','),
-        'timeframe': os.getenv('MT5_TIMEFRAME'),
-        'number_of_candles': int(os.getenv('NUMBER_OF_CANDLES')),
-        'historical_timeframe': parse_bool(os.getenv('HISTORICAL_TIMEFRAME')),
+        'symbols': getenv_required('MT5_SYMBOLS').split(','),
+        'timeframe': getenv_required('MT5_TIMEFRAME'),
+        'number_of_candles': int(getenv_required('NUMBER_OF_CANDLES')),
+        'historical_timeframe': parse_bool(getenv_required('HISTORICAL_TIMEFRAME')),
         'historical_start_time': datetime.strptime(
-            os.getenv('HISTORICAL_START_TIME'), "%Y-%m-%d"
+            getenv_required('HISTORICAL_START_TIME'), "%Y-%m-%d"
         ).replace(tzinfo=timezone.utc),
         'historical_end_time': datetime.strptime(
-            os.getenv("HISTORICAL_END_TIME"),"%Y-%m-%d"
+            getenv_required("HISTORICAL_END_TIME"),"%Y-%m-%d"
         ).replace(tzinfo=timezone.utc)
     }
 
-def load_order_configs() -> dict[str, any]:
+def load_order_configs() -> dict[str, Any]:
     return {
-        'risk_percentage_per_trade': float(os.getenv('RISK_PERCENTAGE_PER_TRADE')),
-        'max_margin_utilisation': float(os.getenv('MAX_MARGIN_UTILISATION'))
+        'account_leverage': int(getenv_required('ACCOUNT_LEVERAGE')), 
+        'risk_percentage_per_trade': float(getenv_required('RISK_PERCENTAGE_PER_TRADE')),
+        'max_margin_utilisation': float(getenv_required('MAX_MARGIN_UTILISATION'))
     }
 
-def load_strategy_configs() -> dict[str, any]:
+def load_strategy_configs() -> dict[str, Any]:
     return {
         'strategy': os.getenv('STRATEGY'),
-        'ema_period_one': int(os.getenv('EMA_PERIOD_ONE')),
-        'ema_period_two': int(os.getenv('EMA_PERIOD_TWO')),
+        'ema_period_one': int(getenv_required('EMA_PERIOD_ONE')),
+        'ema_period_two': int(getenv_required('EMA_PERIOD_TWO')),
     }
