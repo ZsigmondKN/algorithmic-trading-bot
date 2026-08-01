@@ -257,6 +257,7 @@ def run_symbol_backtest(
     ema_df = ema_lib.create_ema_dataframe(
         symbol,
         candles_df.copy(),
+        order_configs["risk_reward_ratio"],
         strategy_configs["ema_period_one"],
         strategy_configs["ema_period_two"],
     ).set_index("datetime")

@@ -35,7 +35,7 @@ def start_up():
                 strategy_configs,
             )
         elif trading_mode == "live_trading":
-            ema_lib.generate_ema_report(symbol_configs, strategy_configs)
+            ema_lib.generate_ema_report(symbol_configs, order_configs, strategy_configs)
             runtime_lib.run_strategy(symbol_configs, order_configs, strategy_configs)
         else:
             raise RuntimeError(f"Unexpected trading mode of {trading_mode} selected.")

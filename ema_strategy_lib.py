@@ -24,6 +24,7 @@ def ema_cross_strategy(
     ema_df = ema_lib.create_ema_dataframe(
         symbol,
         candle_dataframe,
+        float(order_configs["risk_reward_ratio"]),
         int(strategy_configs["ema_period_one"]),
         int(strategy_configs["ema_period_two"]),
     )

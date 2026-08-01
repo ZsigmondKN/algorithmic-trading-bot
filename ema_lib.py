@@ -58,6 +58,7 @@ def add_ema_cross_and_action_to_dataframe(
     return dataframe
 
 def calculate_order_parameters(
+    risk_reward_ratio: float,
     order_type: str,
     candle_high: float,
     candle_low: float,
@@ -72,7 +73,7 @@ def calculate_order_parameters(
             return None, None, None
 
         risk = entry_price - stop_loss
-        take_profit = entry_price + risk
+        take_profit = entry_price + (risk * risk_reward_ratio)
 
     elif order_type == "sell_stop":
         stop_loss = max(fast_ema, slow_ema)
@@ -82,7 +83,7 @@ def calculate_order_parameters(
             return None, None, None
 
         risk = stop_loss - entry_price
-        take_profit = entry_price - risk
+        take_profit = entry_price - (risk * risk_reward_ratio)
 
     else:
         raise ValueError(
@@ -93,6 +94,7 @@ def calculate_order_parameters(
 
 def add_ema_trade_parameters_to_dataframe(
     dataframe: pd.DataFrame,
+    risk_reward_ratio: float,
     faster_ema_period: int,
     slower_ema_period: int
 ) -> pd.DataFrame:
@@ -104,6 +106,7 @@ def add_ema_trade_parameters_to_dataframe(
 
     for i in crosses:
         entry_price, stop_loss, take_profit = calculate_order_parameters(
+            risk_reward_ratio = risk_reward_ratio,
             order_type = df_lib.get_df_val(dataframe, i, "order_type", str),
             candle_high = df_lib.get_df_val(dataframe, i, "high", float),
             candle_low = df_lib.get_df_val(dataframe, i, "low", float),
@@ -123,6 +126,7 @@ def add_ema_trade_parameters_to_dataframe(
 def create_ema_dataframe(
     symbol: str,
     candle_dataframe: pd.DataFrame,
+    risk_reward_ratio: float,
     ema_period_one: int,
     ema_period_two: int,
 ) -> pd.DataFrame:
@@ -140,7 +144,7 @@ def create_ema_dataframe(
         candle_dataframe, warmup_period, faster_ema_period, slower_ema_period
     )
     candle_dataframe = add_ema_trade_parameters_to_dataframe(
-        candle_dataframe, faster_ema_period, slower_ema_period
+        candle_dataframe, risk_reward_ratio, faster_ema_period, slower_ema_period
     )
 
     return candle_dataframe
@@ -304,6 +308,7 @@ from typing import Any
 
 def generate_ema_report(
     symbol_configs: dict[str, Any],
+    order_configs: dict[str, Any],
     strategy_configs: dict[str, Any],
 ) -> None:
     combined_ema_df = pd.DataFrame()
@@ -325,14 +330,15 @@ def generate_ema_report(
         symbol_ema_df = create_ema_dataframe(
             symbol,
             candle_dataframe,
-            int(strategy_configs["ema_period_one"]),
-            int(strategy_configs["ema_period_two"]),
+            order_configs["risk_reward_ratio"],
+            strategy_configs["ema_period_one"],
+            strategy_configs["ema_period_two"],
         )
         combined_ema_df = pd.concat([combined_ema_df, symbol_ema_df], ignore_index = True)
 
     log_ema_crosses(ema_df = combined_ema_df, verbose = False)
     plot_ema_charts(
         combined_ema_df, 
-        int(strategy_configs["ema_period_one"]), 
-        int(strategy_configs["ema_period_two"])
+        strategy_configs["ema_period_one"], 
+        strategy_configs["ema_period_two"]
     )

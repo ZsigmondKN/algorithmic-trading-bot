@@ -23,6 +23,7 @@ def log_setup_config(
     symbols = symbol_configs['symbols']
     timeframe = symbol_configs['timeframe']
 
+    risk_reward_ratio = order_configs['risk_reward_ratio']
     risk_percentage_per_trade = order_configs['risk_percentage_per_trade']
     account_leverage = order_configs['account_leverage']
     max_margin_utilisation = order_configs['max_margin_utilisation']
@@ -33,11 +34,14 @@ def log_setup_config(
         f"with leverage of 1:{account_leverage}."
     )
     logging.info(
-        f"Using time frame of {timeframe}, for the following symbols: {symbols}."
+        f"Using a time frame of {timeframe}, for the following symbols: {symbols}."
     )
     logging.info(
         f"Using a risk per trade of {risk_percentage_per_trade * 100}% and"
-        f"a max margin utilisation per trade of {max_margin_utilisation * 100}%.\n"
+        f"a max margin utilisation per trade of {max_margin_utilisation * 100}%."
+    )
+    logging.info(
+        f"Using a risk-reward ratio of 1:{risk_reward_ratio}.\n"
     )
 
 def select_trading_strategy(strategy_configs: dict[str, str]):

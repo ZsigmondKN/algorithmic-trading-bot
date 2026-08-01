@@ -88,7 +88,8 @@ def load_symbol_configs() -> dict[str, Any]:
 
 def load_order_configs() -> dict[str, Any]:
     return {
-        'account_leverage': int(getenv_required('ACCOUNT_LEVERAGE')), 
+        'account_leverage': int(getenv_required('ACCOUNT_LEVERAGE')),
+        "risk_reward_ratio": float(getenv_required("RISK_REWARD_RATIO")),
         'risk_percentage_per_trade': float(getenv_required('RISK_PERCENTAGE_PER_TRADE')),
         'max_margin_utilisation': float(getenv_required('MAX_MARGIN_UTILISATION'))
     }
