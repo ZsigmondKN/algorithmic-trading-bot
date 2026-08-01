@@ -8,7 +8,7 @@ import logging
 from typing import Protocol, TypeVar
 
 
-from config import LOT_SIZE_CALCULATION_VALUE, ORDER_FULFILL_TIME
+from config import LOT_SIZE_CALCULATION_VALUE, ORDER_FULFILL_TIME, LOGGING_INDENT
 import mt5_lib
 
 class MT5Result(Protocol):
@@ -43,9 +43,9 @@ def validate_margin_requirement(
     margin_utilisation = required_margin / balance
 
     if margin_utilisation > max_margin_utilisation:
-        logging.warning( #TODO add to a count so that I can turn this into a debug
-            f"Trade rejected - "
-            f"Balance={balance:.2f} | "
+        logging.info( #TODO add to a count so that I can turn this into a debug
+            f"Trade rejected - max margin utilisation exceeded.\n"
+            f"{LOGGING_INDENT}Balance={balance:.2f} | "
             f"Required margin={required_margin:.2f} | "
             f"Required Margin utilisation={margin_utilisation:.2%} | "
             f"Symbol={symbol}"

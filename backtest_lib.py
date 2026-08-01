@@ -104,7 +104,6 @@ class EMACross(Strategy):
             stop_loss=stop_loss,
         )
         if lot_size is None:
-            logging.warning("New order exceeds user defined margin requirements.")
             return None
 
         return instrument.make_qty(
@@ -189,6 +188,55 @@ def create_backtest_engine(
 
     return backtest_engine
 
+def create_backtest_candles(
+    symbol: str,
+    symbol_configs: dict
+):
+    if symbol_configs["historical_timeframe"]:
+        historical_start_time = symbol_configs["historical_start_time"]
+        historical_end_time = symbol_configs["historical_end_time"]
+
+        candles_df = mt5_lib.collect_historical_candlesticks(
+            symbol,
+            symbol_configs["timeframe"],
+            historical_start_time,
+            historical_end_time,
+        )
+
+        logging.debug(
+            f"Backtesting {symbol} on historical data from {historical_start_time} till "
+            f"{historical_end_time}."
+        )
+    else:
+        timeframe = symbol_configs["timeframe"]
+        number_of_candles = symbol_configs["number_of_candles"]
+        candles_df = mt5_lib.collect_current_candlesticks(
+            symbol,
+            timeframe,
+            number_of_candles,
+        )
+
+        logging.debug(
+            f"Backtesting {symbol} on {number_of_candles} live candles, "
+            f"with widths of {timeframe}."
+        )
+
+    return candles_df
+
+def get_backtest_bars(bar_type, instrument, ema_df):
+    with warnings.catch_warnings():
+        warnings.filterwarnings(
+            "ignore",
+            message=(
+                "A value is being set on a copy of a "
+                "DataFrame or Series through chained assignment."
+            ),
+        )
+
+        return BarDataWrangler(bar_type, instrument).process(
+            ema_df[["open", "high", "low", "close"]]
+        )
+
 def run_symbol_backtest(
     backtest_engine,
     symbol,
@@ -203,21 +251,9 @@ def run_symbol_backtest(
     else:
         instrument = TestInstrumentProvider.equity(symbol, venue="SIM")
 
-    if symbol_configs["historical_timeframe"]:
-        candles_df = mt5_lib.collect_historical_candlesticks(
-            symbol,
-            symbol_configs["timeframe"],
-            symbol_configs["historical_start_time"],
-            symbol_configs["historical_end_time"],
-        )
-    else:
-        candles_df = mt5_lib.collect_current_candlesticks(
-            symbol,
-            symbol_configs["timeframe"],
-            symbol_configs["number_of_candles"],
-        )
-
+    candles_df = create_backtest_candles(symbol, symbol_configs)
     candles_df = mt5_lib.combine_date_time(candles_df)
+
     ema_df = ema_lib.create_ema_dataframe(
         symbol,
         candles_df.copy(),
@@ -228,18 +264,7 @@ def run_symbol_backtest(
     bar_time = MT5_TIMEFRAME_TO_NAUTILUS_BAR[symbol_configs["timeframe"]]
     bar_type = BarType.from_str(f"{symbol}.SIM-{bar_time}-LAST-EXTERNAL")
 
-    with warnings.catch_warnings():
-        warnings.filterwarnings(
-            "ignore",
-            message=(
-                "A value is being set on a copy of a "
-                "DataFrame or Series through chained assignment."
-            ),
-        )
-
-        bars = BarDataWrangler(bar_type, instrument).process(
-            ema_df[["open", "high", "low", "close"]]
-        )
+    bars = get_backtest_bars(bar_type, instrument, ema_df)
 
     strategy = EMACross(
         EMACrossConfig(
@@ -264,7 +289,7 @@ def run_backtest(
     strategy_configs: dict,
     use_real_account_balance: bool = True,
 ) -> None:
-
+    logging.info(f"Running backtest on symbols: {symbol_configs["symbols"]}.")
     if use_real_account_balance:
         account_balance = mt5_lib.get_account_balance()
     else:

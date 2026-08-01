@@ -13,9 +13,8 @@ def ema_cross_strategy(
     symbol_configs: dict[str, str],
     order_configs: dict[str, str],
     strategy_configs: dict[str, str]
-) -> tuple:
+) -> str:
     report = ""
-    order_placed = False
 
     candle_dataframe = mt5_lib.collect_current_candlesticks(
         symbol,
@@ -54,7 +53,6 @@ def ema_cross_strategy(
                 bypass_order_check = False
             )
             
-            order_placed = True
             report += f"New order submitted. The order response is:\n {order_outcome}\n"
         else:
             report += f"New order exceeds user defined margin requirements.\n"
@@ -64,4 +62,4 @@ def ema_cross_strategy(
     report += latest_signal.to_frame().T.to_string(index=False)
     report = report.replace("\n", f"\n{LOGGING_INDENT}")
 
-    return order_placed, report
+    return report

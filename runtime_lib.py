@@ -93,16 +93,13 @@ def run_strategy(
             if is_new_candle and not has_active_position:
                 previous_candle_times[symbol] = current_candle_time
 
-                new_order_placed, report = trading_strategy(
+                report = trading_strategy(
                     symbol,
                     symbol_configs,
                     order_configs,
                     strategy_configs
                 )
-                if new_order_placed:
-                    logging.info(report)
-                else:
-                    logging.debug(report)
+                logging.debug(report)
 
             else:
                 logging.debug(
