@@ -3,10 +3,10 @@ Author: Zsigmond Kovacs-Nagy
 Description: ...
 """
 
+from decimal import Decimal
 import os
 import warnings
 import webbrowser
-from decimal import Decimal
 
 import MetaTrader5 as mt5
 from nautilus_trader.analysis import create_tearsheet
@@ -15,6 +15,7 @@ from nautilus_trader.config import BacktestEngineConfig, LoggingConfig, Strategy
 from nautilus_trader.model.currencies import USD
 from nautilus_trader.model.data import Bar, BarType
 from nautilus_trader.model.enums import AccountType, OmsType, OrderSide, OrderType
+from nautilus_trader.model.events import PositionClosed
 from nautilus_trader.model.identifiers import InstrumentId, Venue
 from nautilus_trader.model.objects import Money
 from nautilus_trader.persistence.wranglers import BarDataWrangler
@@ -23,10 +24,42 @@ from nautilus_trader.trading.strategy import Strategy
 import pandas as pd
 import logging
 
-from config import MOCK_ACCOUNT_BALANCE, MT5_TIMEFRAME_TO_NAUTILUS_BAR
+from config import MOCK_ACCOUNT_BALANCE, MT5_TIMEFRAME_TO_NAUTILUS_BAR, LOGGING_INDENT
 import ema_lib
 import mt5_lib
 import order_lib
+
+
+class BacktestStatistics:
+    def __init__(self):
+        self.signals_generated = 0
+        self.margin_rejections = 0
+        self.orders_submitted = 0
+        self.positions_closed_by_opposite_signal = 0
+        self.backtest_wind_down_closures = 0
+        self.positions_closed = 0
+
+    def reset(self):
+        self.signals_generated = 0
+        self.margin_rejections = 0
+        self.orders_submitted = 0
+        self.positions_closed_by_opposite_signal = 0
+        self.backtest_wind_down_closures = 0
+        self.positions_closed = 0
+
+    def report(self, symbol: str):
+        logging.info(
+            (
+                f"For symbol {symbol}, trade signals: {self.signals_generated}, "
+                f"margin rejections: {self.margin_rejections}, "
+                f"orders submitted: {self.orders_submitted},\n"
+                f"{LOGGING_INDENT}positions closed by opposite signal: "
+                f"{self.positions_closed_by_opposite_signal}, "
+                f"backtest wind down closures: "
+                f"{self.backtest_wind_down_closures}, "
+                f"positions closed: {self.positions_closed}.\n"
+            )
+        )
 
 class EMACrossConfig(StrategyConfig, frozen=True):
     instrument_id: InstrumentId
@@ -37,12 +70,14 @@ class EMACrossConfig(StrategyConfig, frozen=True):
     max_margin_utilisation: float
     units_per_lot: Decimal
     ema_df: pd.DataFrame
+    statistics: BacktestStatistics
 
 class EMACross(Strategy):
     def __init__(self, config: EMACrossConfig):
         super().__init__(config)
 
         self.ema_df = config.ema_df
+        self.stats = config.statistics
         self.current_row = 0
 
     def on_start(self):
@@ -57,10 +92,17 @@ class EMACross(Strategy):
 
         if not signal["ema_cross"]:
             return
+        
+        self.stats.signals_generated += 1
 
         if signal["order_type"] == "buy_stop":
 
             if self.portfolio.is_net_short(self.config.instrument_id):
+                positions = self.cache.positions_open(
+                    instrument_id=self.config.instrument_id,
+                )
+                self.stats.positions_closed_by_opposite_signal += len(positions)
+    
                 self.close_all_positions(self.config.instrument_id)
 
             if self.portfolio.is_flat(self.config.instrument_id):
@@ -73,6 +115,11 @@ class EMACross(Strategy):
         elif signal["order_type"] == "sell_stop":
 
             if self.portfolio.is_net_long(self.config.instrument_id):
+                positions = self.cache.positions_open(
+                    instrument_id=self.config.instrument_id,
+                )
+                self.stats.positions_closed_by_opposite_signal += len(positions)
+
                 self.close_all_positions(self.config.instrument_id)
 
             if self.portfolio.is_flat(self.config.instrument_id):
@@ -104,6 +151,7 @@ class EMACross(Strategy):
             stop_loss=stop_loss,
         )
         if lot_size is None:
+            self.stats.margin_rejections += 1
             return None
 
         return instrument.make_qty(
@@ -138,6 +186,7 @@ class EMACross(Strategy):
         )
 
         self.submit_order_list(orders)
+        self.stats.orders_submitted += 1
 
     def sell(self, entry_price, stop_loss, take_profit):
         instrument = self.cache.instrument(self.config.instrument_id)
@@ -166,8 +215,17 @@ class EMACross(Strategy):
         )
 
         self.submit_order_list(orders)
+        self.stats.orders_submitted += 1
+
+    def on_position_closed(self, event: PositionClosed):
+        self.stats.positions_closed += 1
 
     def on_stop(self):
+        positions = self.cache.positions_open(
+            instrument_id=self.config.instrument_id,
+        )
+        self.stats.backtest_wind_down_closures += len(positions)
+
         self.close_all_positions(self.config.instrument_id)
 
 def create_backtest_engine(
@@ -243,7 +301,8 @@ def run_symbol_backtest(
     symbol_configs,
     order_configs,
     strategy_configs,
-    units_per_lot
+    units_per_lot,
+    statistics #TODO add type hints in all files and do some more convension work
 ):
     symbol_info = mt5_lib.get_symbol_info(symbol)
     if symbol_info.trade_calc_mode == mt5.SYMBOL_CALC_MODE_FOREX:
@@ -253,7 +312,6 @@ def run_symbol_backtest(
 
     candles_df = create_backtest_candles(symbol, symbol_configs)
     candles_df = mt5_lib.combine_date_time(candles_df)
-
     ema_df = ema_lib.create_ema_dataframe(
         symbol,
         candles_df.copy(),
@@ -264,19 +322,19 @@ def run_symbol_backtest(
 
     bar_time = MT5_TIMEFRAME_TO_NAUTILUS_BAR[symbol_configs["timeframe"]]
     bar_type = BarType.from_str(f"{symbol}.SIM-{bar_time}-LAST-EXTERNAL")
-
     bars = get_backtest_bars(bar_type, instrument, ema_df)
 
     strategy = EMACross(
         EMACrossConfig(
             instrument_id=instrument.id,
-            bar_type=bar_type,
             symbol=symbol,
             account_leverage=order_configs["account_leverage"],
             risk_percentage=order_configs["risk_percentage_per_trade"],
             max_margin_utilisation=order_configs["max_margin_utilisation"],
             units_per_lot=units_per_lot,
             ema_df=ema_df,
+            bar_type=bar_type,
+            statistics=statistics
         ),
     )
 
@@ -290,11 +348,12 @@ def run_backtest(
     strategy_configs: dict,
     use_real_account_balance: bool = True,
 ) -> None:
-    logging.info(f"Running backtest on symbols: {symbol_configs["symbols"]}.")
     if use_real_account_balance:
         account_balance = mt5_lib.get_account_balance()
     else:
         account_balance = MOCK_ACCOUNT_BALANCE
+
+    statistics = BacktestStatistics()
 
     for symbol in symbol_configs["symbols"]:
         units_per_lot = mt5_lib.get_units_per_lot(symbol)
@@ -303,16 +362,21 @@ def run_backtest(
             order_configs["account_leverage"]
         )
 
+        logging.info(f"Running backtest on {symbol} symbol.")
+
         run_symbol_backtest(
             backtest_engine,
             symbol,
             symbol_configs,
             order_configs,
             strategy_configs,
-            units_per_lot
+            units_per_lot,
+            statistics
         )
 
         backtest_engine.run()
+        statistics.report(symbol)
+        statistics.reset()
 
         tearsheet_name = (f".\\reports\\backtest_tearsheet_{symbol}.html")
         create_tearsheet(engine = backtest_engine, output_path = tearsheet_name)

@@ -37,7 +37,7 @@ def log_setup_config(
         f"Using a time frame of {timeframe}, for the following symbols: {symbols}."
     )
     logging.info(
-        f"Using a risk per trade of {risk_percentage_per_trade * 100}% and"
+        f"Using a risk per trade of {risk_percentage_per_trade * 100}% and "
         f"a max margin utilisation per trade of {max_margin_utilisation * 100}%."
     )
     logging.info(

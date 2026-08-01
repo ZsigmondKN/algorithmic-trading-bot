@@ -41,6 +41,8 @@ EMA_WARMUP_MULTIPLIER = 1.5
 # Loggigng constants
 LOGGING_INDENT = '                 '
 
+#TODO add a config setting to change the logging from info to debugging
+
 # Logging config
 logging.basicConfig(
     level=logging.INFO, 
