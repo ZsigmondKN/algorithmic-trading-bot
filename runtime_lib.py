@@ -3,30 +3,33 @@ Author: Zsigmond Kovacs-Nagy
 Description: ...
 """
 
-import MetaTrader5 as mt5
 import logging
 from time import sleep
+from typing import Callable
+
+import MetaTrader5 as mt5
 
 from config import EMA_CROSS_STRATEGY, LOGGING_INDENT, STRATEGY_CHECK_FREQUENCY
 import ema_strategy_lib
 import mt5_lib
 import order_lib
 
+
 def log_setup_config(
     mt5_configs: dict[str, str],
     symbol_configs: dict[str, str], 
     order_configs: dict[str, str],
 ) -> None:
-    user_name = mt5_configs['username']
-    server = mt5_configs['server']
+    user_name = mt5_configs["username"]
+    server = mt5_configs["server"]
 
-    symbols = symbol_configs['symbols']
-    timeframe = symbol_configs['timeframe']
+    symbols = symbol_configs["symbols"]
+    timeframe = symbol_configs["timeframe"]
 
-    risk_reward_ratio = order_configs['risk_reward_ratio']
-    risk_percentage_per_trade = order_configs['risk_percentage_per_trade']
-    account_leverage = order_configs['account_leverage']
-    max_margin_utilisation = order_configs['max_margin_utilisation']
+    risk_reward_ratio = order_configs["risk_reward_ratio"]
+    risk_percentage_per_trade = order_configs["risk_percentage_per_trade"]
+    account_leverage = order_configs["account_leverage"]
+    max_margin_utilisation = order_configs["max_margin_utilisation"]
 
 
     logging.info(
@@ -44,28 +47,30 @@ def log_setup_config(
         f"Using a risk-reward ratio of 1:{risk_reward_ratio}.\n"
     )
 
-def select_trading_strategy(strategy_configs: dict[str, str]):
+
+def select_trading_strategy(strategy_configs: dict[str, str]) -> Callable[..., str]:
     if strategy_configs["strategy"] == EMA_CROSS_STRATEGY:
-        ema_period_one = strategy_configs['ema_period_one']
-        ema_period_two = strategy_configs['ema_period_two']
+        ema_period_one = strategy_configs["ema_period_one"]
+        ema_period_two = strategy_configs["ema_period_two"]
 
         logging.info(
             f"Using the EMA cross strategy with periods {ema_period_one} "
             f"and {ema_period_two}.\n{LOGGING_INDENT}"
-            "Waiting for EMA cross to occure..."
+            "Waiting for EMA cross to occur..."
         )
         return ema_strategy_lib.ema_cross_strategy
-    else:
-        # TODO: implement another strategy using TaLib, refer to video
-        raise RuntimeError(
-            f"The selected trading stategy of '{strategy_configs["strategy"]}' is incompatible "
-            f"with the available options.")
+
+    # TODO: implement another strategy using TaLib, refer to video
+    raise RuntimeError(
+        f"The selected trading strategy of '{strategy_configs['strategy']}' is incompatible "
+        f"with the available options.")
+
 
 def run_strategy(
     symbol_configs: dict[str, str],
     order_configs: dict[str, str],
     strategy_configs: dict[str, str]
-):
+) -> None:
     trading_strategy = select_trading_strategy(strategy_configs)
     symbols = symbol_configs["symbols"]
     timeframe = symbol_configs["timeframe"]
@@ -75,7 +80,7 @@ def run_strategy(
     }
 
     while True:
-        # if order was not placed in the span of the STRATEGY_CHECK_FREQUENCY, cancel the order
+        # If order was not placed in the span of the STRATEGY_CHECK_FREQUENCY, cancel the order
         order_lib.cancel_all_pending_orders()
 
         has_active_position = mt5.positions_total() > 0
@@ -98,10 +103,10 @@ def run_strategy(
                 previous_candle_times[symbol] = current_candle_time
 
                 report = trading_strategy(
-                    symbol,
-                    symbol_configs,
-                    order_configs,
-                    strategy_configs
+                    symbol=symbol,
+                    symbol_configs=symbol_configs,
+                    order_configs=order_configs,
+                    strategy_configs=strategy_configs,
                 )
                 logging.debug(report)
 
@@ -112,7 +117,7 @@ def run_strategy(
                 )
 
         # TODO for the future: I would prefer to have the interval computed so the while loop only 
-        # ran a few seconds after each new candle.
+        # Ran a few seconds after each new candle.
         # TODO for the future: when the market is closed, make no requests.
         sleep(STRATEGY_CHECK_FREQUENCY)
 

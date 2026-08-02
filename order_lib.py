@@ -3,29 +3,36 @@ Author: Zsigmond Kovacs-Nagy
 Description: ...
 """
 
-import MetaTrader5 as mt5
 import logging
-from typing import Protocol, TypeVar
+from typing import Protocol, TypeVar, Any
 
+import MetaTrader5 as mt5
 
 from config import LOT_SIZE_CALCULATION_VALUE, ORDER_FULFILL_TIME, LOGGING_INDENT
 import mt5_lib
+
 
 class MT5Result(Protocol):
     retcode: int
     comment: str
 
+
 T = TypeVar("T", bound=MT5Result)
 
+
 def normalise_price_parameters(
-    symbol_info: mt5.SymbolInfo, stop_loss: float, take_profit: float, entry_price: float
-) -> tuple:
+    symbol_info: mt5.SymbolInfo,
+    stop_loss: float,
+    take_profit: float,
+    entry_price: float
+) -> tuple[float, float, float]:
     price_digits = symbol_info.digits
     stop_loss = round(stop_loss, price_digits)
     take_profit = round(take_profit, price_digits)
     entry_price = round(entry_price, price_digits)
 
     return stop_loss, take_profit, entry_price
+
 
 def validate_margin_requirement(
     balance: float,
@@ -54,6 +61,7 @@ def validate_margin_requirement(
 
     return True
 
+
 def normalise_lot_size(symbol_info: mt5.SymbolInfo, lot_size: float) -> float:
     if lot_size <= 0:
         raise ValueError(f"Lot size must be positive, got {lot_size}.")
@@ -64,6 +72,7 @@ def normalise_lot_size(symbol_info: mt5.SymbolInfo, lot_size: float) -> float:
     lot_size = min(symbol_info.volume_max, lot_size)
 
     return lot_size
+
 
 def calculate_lot_size(
     balance: float,
@@ -90,7 +99,7 @@ def calculate_lot_size(
     error_log_parameters = (
         f"order_type={valid_order_type}, "
         f"symbol={symbol}, "
-        f"lot_size_calculation_value={LOT_SIZE_CALCULATION_VALUE} ,"
+        f"lot_size_calculation_value={LOT_SIZE_CALCULATION_VALUE}, "
         f"entry_price={entry_price}, "
         f"stop_loss={stop_loss}, "
         f"loss_per_lot={loss_per_lot}"
@@ -118,11 +127,12 @@ def calculate_lot_size(
         entry_price,
     )
     
-    #TODO Also add a maximum simultaneous exposure check
+    # TODO Also add a maximum simultaneous exposure check
     if not margin_requirements_met:
         return None
 
     return lot_size
+
 
 def build_order_request(
     symbol: str,
@@ -132,7 +142,7 @@ def build_order_request(
     stop_loss: float,
     take_profit: float,
     comment: str,
-) -> dict:
+) -> dict[str, Any]:
     request = {
         "action": mt5.TRADE_ACTION_PENDING,
         "symbol": symbol,
@@ -148,13 +158,12 @@ def build_order_request(
 
     return request
 
+
 def validate_order_request_response(result: T | None, action: str) -> T:
     if result is None:
         raise RuntimeError(
             f"{action} failed: {mt5.last_error()}."
         )
-
-    assert result is not None
 
     if result.retcode != mt5.TRADE_RETCODE_DONE:
         raise RuntimeError(
@@ -163,6 +172,7 @@ def validate_order_request_response(result: T | None, action: str) -> T:
         )
 
     return result
+
 
 def place_order(
     symbol: str,
@@ -176,30 +186,44 @@ def place_order(
 ) -> mt5.OrderSendResult:
     symbol_info = mt5_lib.get_symbol_info(symbol)
     normalised_lot_size = normalise_lot_size(symbol_info, lot_size)
-    normalised_stop_loss, normalised_take_profit, normalised_entry_price = normalise_price_parameters(
-        symbol_info, stop_loss, take_profit, entry_price
+    (
+        normalised_stop_loss,
+        normalised_take_profit,
+        normalised_entry_price
+    ) = normalise_price_parameters(
+        symbol_info=symbol_info,
+        stop_loss=stop_loss,
+        take_profit=take_profit,
+        entry_price=entry_price
     )
 
     request = build_order_request(
-        symbol,
-        normalised_lot_size,
-        order_type,
-        normalised_entry_price,
-        normalised_stop_loss,
-        normalised_take_profit,
-        comment
+        symbol=symbol,
+        lot_size=normalised_lot_size,
+        order_type=order_type,
+        entry_price=normalised_entry_price,
+        stop_loss=normalised_stop_loss,
+        take_profit=normalised_take_profit,
+        comment=comment
     )
 
     if not bypass_order_check:
         check_result = mt5.order_check(request)
-        validate_order_request_response(check_result, "Order check")
+        validate_order_request_response(
+            result=check_result,
+            action="Order check"
+        )
     
     order_result = mt5.order_send(request)
-    order_result = validate_order_request_response(order_result, "Order submission")
+    order_result = validate_order_request_response(
+        result=order_result,
+        action="Order submission"
+    )
     
     return order_result
 
-def cancel_order(order_number: int) -> bool:
+
+def cancel_order(order_number: int) -> None:
     cancel_request = {
         "action": mt5.TRADE_ACTION_REMOVE,
         "order": order_number,
@@ -213,14 +237,17 @@ def cancel_order(order_number: int) -> bool:
         )
 
         logging.info(f"Order {order_number} cancelled successfully")
-        return True
 
     except Exception:
         logging.exception(f"Unexpected error while cancelling order {order_number}.")
         raise
 
-def cancel_all_pending_orders():
+
+def cancel_all_pending_orders() -> None:
     all_open_orders = mt5.orders_get()
+
+    if all_open_orders is None:
+        raise RuntimeError(f"Unable to retrieve open orders: {mt5.last_error()}")
 
     for open_order in all_open_orders:
         cancel_order(open_order.ticket)

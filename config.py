@@ -4,10 +4,9 @@ Description: ...
 """
 
 from datetime import datetime, timezone
-from decimal import Decimal
 import logging
-from typing import Any
 import os
+from typing import Any
 
 import MetaTrader5 as mt5
 
@@ -20,7 +19,7 @@ STRATEGY_CHECK_FREQUENCY = 10
 
 # Order placing constants
 LOT_SIZE_CALCULATION_VALUE = 1.0
-ORDER_FULFILL_TIME = mt5.ORDER_TIME_GTC # The order stays in the queue until it is manually canceled
+ORDER_FULFILL_TIME = mt5.ORDER_TIME_GTC  # The order stays in the queue until it is manually canceled
 
 # Backtesting constants
 MT5_TIMEFRAME_TO_NAUTILUS_BAR = {
@@ -35,20 +34,20 @@ MT5_TIMEFRAME_TO_NAUTILUS_BAR = {
 MOCK_ACCOUNT_BALANCE = 500000
 
 # EMA strategy constants
-EMA_CROSS_STRATEGY = 'ema_cross_strategy'
+EMA_CROSS_STRATEGY = "ema_cross_strategy"
 EMA_WARMUP_MULTIPLIER = 1.5
 
-# Loggigng constants
-LOGGING_INDENT = '                 '
-
-#TODO add a config setting to change the logging from info to debugging
+# Logging constants
+LOGGING_INDENT = " " * 17
 
 # Logging config
+# TODO: Add a config setting to change the logging level.
 logging.basicConfig(
-    level=logging.INFO, 
-    format="%(asctime)s - %(levelname)s: %(message)s", 
-    datefmt="%H:%M:%S"
+    level=logging.INFO,
+    format="%(asctime)s - %(levelname)s: %(message)s",
+    datefmt="%H:%M:%S",
 )
+
 
 def parse_bool(value: str) -> bool:
     value = value.strip().lower()
@@ -57,8 +56,9 @@ def parse_bool(value: str) -> bool:
         return True
     if value in ("false", "no"):
         return False
-    
+
     raise ValueError(f"Invalid boolean configuration value: {value}")
+
 
 def getenv_required(name: str) -> str:
     value = os.getenv(name)
@@ -66,39 +66,47 @@ def getenv_required(name: str) -> str:
         raise RuntimeError(f"Required environment variable '{name}' is missing.")
     return value
 
+
 def load_mt5_configs() -> dict[str, Any]:
     return {
-        'username': getenv_required('MT5_USERNAME'),
-        'password': getenv_required('MT5_PASSWORD'),
-        'server': getenv_required('MT5_SERVER'),
-        'trading_mode': getenv_required('TRADING_MODE')
+        "username": getenv_required("MT5_USERNAME"),
+        "password": getenv_required("MT5_PASSWORD"),
+        "server": getenv_required("MT5_SERVER"),
+        "trading_mode": getenv_required("TRADING_MODE")
     }
+
 
 def load_symbol_configs() -> dict[str, Any]:
     return {
-        'symbols': getenv_required('MT5_SYMBOLS').split(','),
-        'timeframe': getenv_required('MT5_TIMEFRAME'),
-        'number_of_candles': int(getenv_required('NUMBER_OF_CANDLES')),
-        'historical_timeframe': parse_bool(getenv_required('HISTORICAL_TIMEFRAME')),
-        'historical_start_time': datetime.strptime(
-            getenv_required('HISTORICAL_START_TIME'), "%Y-%m-%d"
+        "symbols": getenv_required("MT5_SYMBOLS").split(","),
+        "timeframe": getenv_required("MT5_TIMEFRAME"),
+        "number_of_candles": int(getenv_required("NUMBER_OF_CANDLES")),
+        "historical_timeframe": parse_bool(getenv_required("HISTORICAL_TIMEFRAME")),
+        "historical_start_time": datetime.strptime(
+            getenv_required("HISTORICAL_START_TIME"), "%Y-%m-%d"
         ).replace(tzinfo=timezone.utc),
-        'historical_end_time': datetime.strptime(
-            getenv_required("HISTORICAL_END_TIME"),"%Y-%m-%d"
+        "historical_end_time": datetime.strptime(
+            getenv_required("HISTORICAL_END_TIME"), "%Y-%m-%d"
         ).replace(tzinfo=timezone.utc)
     }
 
+
 def load_order_configs() -> dict[str, Any]:
     return {
-        'account_leverage': int(getenv_required('ACCOUNT_LEVERAGE')),
+        "account_leverage": int(getenv_required("ACCOUNT_LEVERAGE")),
         "risk_reward_ratio": float(getenv_required("RISK_REWARD_RATIO")),
-        'risk_percentage_per_trade': float(getenv_required('RISK_PERCENTAGE_PER_TRADE')),
-        'max_margin_utilisation': float(getenv_required('MAX_MARGIN_UTILISATION'))
+        "risk_percentage_per_trade": float(
+            getenv_required("RISK_PERCENTAGE_PER_TRADE")
+        ),
+        "max_margin_utilisation": float(
+            getenv_required("MAX_MARGIN_UTILISATION")
+        )
     }
+
 
 def load_strategy_configs() -> dict[str, Any]:
     return {
-        'strategy': os.getenv('STRATEGY'),
-        'ema_period_one': int(getenv_required('EMA_PERIOD_ONE')),
-        'ema_period_two': int(getenv_required('EMA_PERIOD_TWO')),
+        "strategy": os.getenv("STRATEGY"),
+        "ema_period_one": int(getenv_required("EMA_PERIOD_ONE")),
+        "ema_period_two": int(getenv_required("EMA_PERIOD_TWO")),
     }

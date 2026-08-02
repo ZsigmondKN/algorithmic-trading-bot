@@ -8,6 +8,7 @@ import ema_lib
 import mt5_lib
 import order_lib
 
+
 def ema_cross_strategy(
     symbol: str,
     symbol_configs: dict[str, str],
@@ -33,30 +34,33 @@ def ema_cross_strategy(
 
     if latest_signal["ema_cross"]:
         lot_size = order_lib.calculate_lot_size(
-            balance = mt5_lib.get_account_balance(),
-            account_leverage = int(order_configs["account_leverage"]),
-            risk_percentage = float(order_configs["risk_percentage_per_trade"]),
-            max_margin_utilisation = float(order_configs["max_margin_utilisation"]),
-            order_type = latest_signal["order_type"],
-            symbol = symbol,
-            entry_price = latest_signal["entry_price"],
-            stop_loss = latest_signal["stop_loss"]
+            balance=mt5_lib.get_account_balance(),
+            account_leverage=int(order_configs["account_leverage"]),
+            risk_percentage=float(order_configs["risk_percentage_per_trade"]),
+            max_margin_utilisation=float(order_configs["max_margin_utilisation"]),
+            order_type=latest_signal["order_type"],
+            symbol=symbol,
+            entry_price=latest_signal["entry_price"],
+            stop_loss=latest_signal["stop_loss"]
         )
-        if lot_size:
+        if lot_size is not None:
             order_outcome = order_lib.place_order(
-                symbol = symbol,
-                lot_size = lot_size,
-                order_type = latest_signal["order_type"],
-                entry_price = latest_signal["entry_price"],
-                stop_loss = latest_signal["stop_loss"],
-                take_profit = latest_signal["take_profit"],
-                comment = f"EMA_Cross_Strategy_{symbol}",
-                bypass_order_check = False
+                symbol=symbol,
+                lot_size=lot_size,
+                order_type=latest_signal["order_type"],
+                entry_price=latest_signal["entry_price"],
+                stop_loss=latest_signal["stop_loss"],
+                take_profit=latest_signal["take_profit"],
+                comment=f"EMA_Cross_Strategy_{symbol}",
+                bypass_order_check=False
             )
             
-            report += f"New order submitted. The order response is:\n {order_outcome}\n"
+            report += (
+                "New order submitted. The order response is:\n "
+                f"{order_outcome}\n"
+            )
         else:
-            report += f"New order exceeds user defined margin requirements.\n"
+            report += "New order exceeds user defined margin requirements.\n"
     else:
         report += "The EMA values did not cross and so no order was placed.\n"
     

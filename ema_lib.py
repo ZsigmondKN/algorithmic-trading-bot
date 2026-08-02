@@ -5,13 +5,16 @@ Description: Compute and use Exponential Moving Averages (EMAs).
 
 from datetime import datetime
 import logging
-import pandas as pd
+from typing import Any
+
 import matplotlib.dates as mdates
 import matplotlib.pyplot as plt
+import pandas as pd
 
 from config import EMA_WARMUP_MULTIPLIER
 import df_lib
 import mt5_lib
+
 
 def check_and_order_emas(ema_period_one: int, ema_period_two: int) -> tuple[int, int]:
     if ema_period_one == ema_period_two:
@@ -19,18 +22,20 @@ def check_and_order_emas(ema_period_one: int, ema_period_two: int) -> tuple[int,
 
     return min(ema_period_one, ema_period_two), max(ema_period_one, ema_period_two)
 
+
 def add_ema_to_dataframe(dataframe: pd.DataFrame, ema_period: int) -> pd.DataFrame:
     ema_column = f"ema_{ema_period}"
 
-    # add an EMA column to the dataframe using pandas' Exponential Moving Window (EWM)
-    dataframe[ema_column] = dataframe['close'].ewm(
-        span = ema_period,
-        # calculate the EMA without adjusting for previous values, 
-        # this is standard for trading
-        adjust = False 
-    ).mean() # convert EWM into EMA
+    # Add an EMA column to the dataframe using pandas' Exponential Moving Window (EWM)
+    dataframe[ema_column] = dataframe["close"].ewm(
+        span=ema_period,
+        # Calculate the EMA without adjusting for previous values, 
+        # This is standard for trading.
+        adjust=False
+    ).mean()  # Convert EWM into EMA
     
     return dataframe
+
 
 def add_ema_cross_and_action_to_dataframe(
     dataframe: pd.DataFrame,
@@ -43,7 +48,7 @@ def add_ema_cross_and_action_to_dataframe(
     )
     is_previous_pos_bullish = is_current_pos_bullish.shift(1)
 
-    dataframe['ema_cross'] = is_current_pos_bullish != is_previous_pos_bullish
+    dataframe["ema_cross"] = is_current_pos_bullish != is_previous_pos_bullish
     dataframe.loc[dataframe.index[0], "ema_cross"] = False
     dataframe.loc[:warmup_period - 1, "ema_cross"] = False
 
@@ -56,6 +61,7 @@ def add_ema_cross_and_action_to_dataframe(
     ] = "sell_stop"
 
     return dataframe
+
 
 def calculate_order_parameters(
     risk_reward_ratio: float,
@@ -86,11 +92,10 @@ def calculate_order_parameters(
         take_profit = entry_price - (risk * risk_reward_ratio)
 
     else:
-        raise ValueError(
-            f"Unrecognised order type of '{order_type}'assigned to ema cross."
-        )
+        raise ValueError(f"Unsupported EMA cross order type: '{order_type}'.")
 
     return entry_price, stop_loss, take_profit
+
 
 def add_ema_trade_parameters_to_dataframe(
     dataframe: pd.DataFrame,
@@ -106,12 +111,12 @@ def add_ema_trade_parameters_to_dataframe(
 
     for i in crosses:
         entry_price, stop_loss, take_profit = calculate_order_parameters(
-            risk_reward_ratio = risk_reward_ratio,
-            order_type = df_lib.get_df_val(dataframe, i, "order_type", str),
-            candle_high = df_lib.get_df_val(dataframe, i, "high", float),
-            candle_low = df_lib.get_df_val(dataframe, i, "low", float),
-            fast_ema = df_lib.get_df_val(dataframe, i, f"ema_{faster_ema_period}", float),
-            slow_ema = df_lib.get_df_val(dataframe, i, f"ema_{slower_ema_period}", float),
+            risk_reward_ratio=risk_reward_ratio,
+            order_type=df_lib.get_df_val(dataframe, i, "order_type", str),
+            candle_high=df_lib.get_df_val(dataframe, i, "high", float),
+            candle_low=df_lib.get_df_val(dataframe, i, "low", float),
+            fast_ema=df_lib.get_df_val(dataframe, i, f"ema_{faster_ema_period}", float),
+            slow_ema=df_lib.get_df_val(dataframe, i, f"ema_{slower_ema_period}", float),
         )
 
         if entry_price is None:
@@ -123,6 +128,7 @@ def add_ema_trade_parameters_to_dataframe(
 
     return dataframe
 
+
 def create_ema_dataframe(
     symbol: str,
     candle_dataframe: pd.DataFrame,
@@ -133,27 +139,36 @@ def create_ema_dataframe(
     faster_ema_period, slower_ema_period = check_and_order_emas(
         ema_period_one, ema_period_two
     )
-    warmup_period = int(max(faster_ema_period, slower_ema_period) * EMA_WARMUP_MULTIPLIER)
+    warmup_period = int(
+        max(faster_ema_period, slower_ema_period) * EMA_WARMUP_MULTIPLIER
+    )
 
     candle_dataframe.insert(0, "symbol", symbol)
 
-    # add EMA values and trade parameters
+    # Add EMA values and trade parameters
     candle_dataframe = add_ema_to_dataframe(candle_dataframe, faster_ema_period)
     candle_dataframe = add_ema_to_dataframe(candle_dataframe, slower_ema_period)
     candle_dataframe = add_ema_cross_and_action_to_dataframe(
-        candle_dataframe, warmup_period, faster_ema_period, slower_ema_period
+        dataframe=candle_dataframe,
+        warmup_period=warmup_period,
+        faster_ema_period=faster_ema_period,
+        slower_ema_period=slower_ema_period
     )
     candle_dataframe = add_ema_trade_parameters_to_dataframe(
-        candle_dataframe, risk_reward_ratio, faster_ema_period, slower_ema_period
+        dataframe=candle_dataframe,
+        risk_reward_ratio=risk_reward_ratio,
+        faster_ema_period=faster_ema_period,
+        slower_ema_period=slower_ema_period
     )
 
     return candle_dataframe
+
 
 def log_ema_crosses(ema_df: pd.DataFrame, verbose: bool = False) -> None:
     ema_df_cross = ema_df[ema_df["ema_cross"]].copy()
     if not verbose:
         ema_df_cross = ema_df_cross.drop(
-            columns = ["high", "low", "tick_volume", "spread", "real_volume"]
+            columns=["high", "low", "tick_volume", "spread", "real_volume"]
         )
         logging.info("EMA dataframe (concise):")
     else:
@@ -161,23 +176,20 @@ def log_ema_crosses(ema_df: pd.DataFrame, verbose: bool = False) -> None:
 
     print(ema_df_cross.round(3).to_string(index=False))
 
+
 def plot_ema_charts(
     ema_df: pd.DataFrame,
     ema_period_one: int,
     ema_period_two: int,
 ) -> None:
     for symbol, symbol_df in ema_df.groupby("symbol"):
-
         symbol_df = symbol_df.copy()
         symbol_df = mt5_lib.combine_date_time(symbol_df)
 
         # Identify gaps between candles
-        gap_mask = (
-            symbol_df["datetime"].diff()
-            > pd.Timedelta(hours=2)
-        )
+        gap_mask = symbol_df["datetime"].diff() > pd.Timedelta(hours=2)
 
-        warmup_period = int(
+        warmup_period = int(  # TODO this is being done twice make into a function
             max(ema_period_one, ema_period_two)
             * EMA_WARMUP_MULTIPLIER
         )
@@ -202,11 +214,10 @@ def plot_ema_charts(
 
         # Shade gaps and break plotted lines
         for gap_index in symbol_df.index[gap_mask]:
-
             previous_index = gap_index - 1
 
             ax.axvspan(
-                xmin = mdates.date2num(
+                xmin=mdates.date2num(
                     df_lib.get_df_val(symbol_df, previous_index, "datetime", datetime)
                 ),
                 xmax=mdates.date2num(
@@ -214,8 +225,8 @@ def plot_ema_charts(
                 ),
                 color="grey",
                 alpha=0.1,
-                label="Market closed" 
-                if gap_index == symbol_df.index[gap_mask][0] 
+                label="Market closed"
+                if gap_index == symbol_df.index[gap_mask][0]
                 else "_nolegend_",
             )
 
@@ -264,7 +275,7 @@ def plot_ema_charts(
         ax.scatter(
             symbol_df.loc[cross_buy_mask, "datetime"],
             symbol_df.loc[cross_buy_mask, "close"],
-            edgecolors="#004D00", # extra dark green
+            edgecolors="#004D00",  # Extra dark green
             linewidths=1.5,
             color="green",
             s=50,
@@ -289,9 +300,7 @@ def plot_ema_charts(
         locator = mdates.AutoDateLocator()
 
         ax.xaxis.set_major_locator(locator)
-        ax.xaxis.set_major_formatter(
-            mdates.ConciseDateFormatter(locator)
-        )
+        ax.xaxis.set_major_formatter(mdates.ConciseDateFormatter(locator))
 
         ax.set_title(str(symbol))
         ax.set_xlabel("Date and Time")
@@ -304,7 +313,6 @@ def plot_ema_charts(
 
         plt.show()
 
-from typing import Any
 
 def generate_ema_report(
     symbol_configs: dict[str, Any],
@@ -334,9 +342,9 @@ def generate_ema_report(
             strategy_configs["ema_period_one"],
             strategy_configs["ema_period_two"],
         )
-        combined_ema_df = pd.concat([combined_ema_df, symbol_ema_df], ignore_index = True)
+        combined_ema_df = pd.concat([combined_ema_df, symbol_ema_df], ignore_index=True)
 
-    log_ema_crosses(ema_df = combined_ema_df, verbose = False)
+    log_ema_crosses(ema_df=combined_ema_df, verbose=False)
     plot_ema_charts(
         combined_ema_df, 
         strategy_configs["ema_period_one"], 
