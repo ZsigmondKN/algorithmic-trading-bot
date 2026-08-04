@@ -158,12 +158,7 @@ class EMACross(Strategy):
             Decimal(str(lot_size)) * self.config.units_per_lot
         )
 
-    def buy(
-        self, 
-        entry_price: float, 
-        stop_loss: float, 
-        take_profit: float
-    ) -> None:
+    def buy(self, entry_price: float, stop_loss: float, take_profit: float) -> None:
         instrument = self.cache.instrument(self.config.instrument_id)
         quantity = self._calculate_quantity(
             instrument=instrument,
@@ -172,12 +167,12 @@ class EMACross(Strategy):
             stop_loss=stop_loss
         )
 
+        if quantity is None:
+            return
+
         entry_price = instrument.make_price(entry_price)
         stop_loss = instrument.make_price(stop_loss)
         take_profit = instrument.make_price(take_profit)
-
-        if quantity is None:
-            return
         
         orders = self.order_factory.bracket(
             instrument_id=self.config.instrument_id,
@@ -191,12 +186,7 @@ class EMACross(Strategy):
         self.submit_order_list(orders)
         self.stats.orders_submitted += 1
 
-    def sell(
-        self,
-        entry_price: float, 
-        stop_loss: float, 
-        take_profit: float
-    ) -> None:
+    def sell(self, entry_price: float, stop_loss: float, take_profit: float) -> None:
         instrument = self.cache.instrument(self.config.instrument_id)
         quantity = self._calculate_quantity(
             instrument=instrument,
@@ -205,12 +195,12 @@ class EMACross(Strategy):
             stop_loss=stop_loss
         )
 
+        if quantity is None:
+            return
+
         entry_price = instrument.make_price(entry_price)
         stop_loss = instrument.make_price(stop_loss)
         take_profit = instrument.make_price(take_profit)
-
-        if quantity is None:
-            return
 
         orders = self.order_factory.bracket(
             instrument_id=self.config.instrument_id,
@@ -238,6 +228,7 @@ class EMACross(Strategy):
 
 def create_backtest_engine(
     account_balance: float,
+    base_currency: str,
     account_leverage: int
 ) -> BacktestEngine:
     backtest_engine = BacktestEngine(
@@ -271,8 +262,8 @@ def create_backtest_candles(
         )
 
         logging.debug(
-            f"Backtesting {symbol} on historical data from {historical_start_time} till "
-            f"{historical_end_time}."
+            f"Backtesting {symbol} on historical data from "
+            f"{historical_start_time} till {historical_end_time}."
         )
     else:
         timeframe = symbol_configs["timeframe"]
@@ -377,8 +368,9 @@ def run_backtest(
     for symbol in symbol_configs["symbols"]:
         units_per_lot = mt5_lib.get_units_per_lot(symbol)
         backtest_engine = create_backtest_engine(
-            account_balance,
-            order_configs["account_leverage"]
+            account_balance=account_balance,
+            base_currency=order_configs["base_currency"],
+            account_leverage=order_configs["account_leverage"]
         )
 
         logging.info(f"Running backtest on {symbol} symbol.")

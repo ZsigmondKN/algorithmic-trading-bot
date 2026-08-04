@@ -93,6 +93,7 @@ def load_symbol_configs() -> dict[str, Any]:
 
 def load_order_configs() -> dict[str, Any]:
     return {
+        "base_currency": getenv_required("BASE_CURRENCY"),
         "account_leverage": int(getenv_required("ACCOUNT_LEVERAGE")),
         "risk_reward_ratio": float(getenv_required("RISK_REWARD_RATIO")),
         "risk_percentage_per_trade": float(

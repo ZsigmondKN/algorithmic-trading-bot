@@ -119,12 +119,12 @@ def calculate_lot_size(
     lot_size = normalise_lot_size(symbol_info, lot_size)
 
     margin_requirements_met = validate_margin_requirement(
-        balance,
-        account_leverage,
-        max_margin_utilisation,
-        symbol,
-        lot_size,
-        entry_price,
+        balance=balance,
+        leverage=account_leverage,
+        max_margin_utilisation=max_margin_utilisation,
+        symbol=symbol,
+        lot_size=lot_size,
+        entry_price=entry_price,
     )
     
     # TODO Also add a maximum simultaneous exposure check
