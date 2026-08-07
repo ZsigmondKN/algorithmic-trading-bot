@@ -61,6 +61,7 @@ if __name__ == "__main__":
         logging.info("Shutdown request by user.")
     except Exception:
         logging.exception("Unhandled exception.")
+        # TODO for raised errors make the output nicer
     finally:
         try:
             order_lib.cancel_all_pending_orders()

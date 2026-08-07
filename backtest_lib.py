@@ -3,6 +3,7 @@ Author: Zsigmond Kovacs-Nagy
 Description: ...
 """
 
+from datetime import datetime
 from decimal import Decimal
 import logging
 import os
@@ -13,13 +14,13 @@ import MetaTrader5 as mt5
 from nautilus_trader.analysis import create_tearsheet
 from nautilus_trader.backtest.engine import BacktestEngine
 from nautilus_trader.config import BacktestEngineConfig, LoggingConfig, StrategyConfig
-from nautilus_trader.model.currencies import USD
-from nautilus_trader.model.data import Bar, BarType
+from nautilus_trader.model import Money, Currency
+from nautilus_trader.model.data import Bar, BarType, QuoteTick
 from nautilus_trader.model.enums import AccountType, OmsType, OrderSide, OrderType
 from nautilus_trader.model.events import PositionClosed
 from nautilus_trader.model.identifiers import InstrumentId, Venue
 from nautilus_trader.model.instruments import Instrument
-from nautilus_trader.model.objects import Money, Quantity
+from nautilus_trader.model.objects import Quantity
 from nautilus_trader.persistence.wranglers import BarDataWrangler
 from nautilus_trader.test_kit.providers import TestInstrumentProvider
 from nautilus_trader.trading.strategy import Strategy
@@ -226,24 +227,65 @@ class EMACross(Strategy):
         self.close_all_positions(self.config.instrument_id)
 
 
-def create_backtest_engine(
-    account_balance: float,
-    base_currency: str,
-    account_leverage: int
-) -> BacktestEngine:
-    backtest_engine = BacktestEngine(
-        config=BacktestEngineConfig(logging=LoggingConfig(log_level="ERROR"))
-    )
-    backtest_engine.add_venue(
-        venue=Venue("SIM"),
-        oms_type=OmsType.HEDGING,
-        account_type=AccountType.MARGIN,
-        starting_balances=[Money(account_balance, USD)],
-        base_currency=USD, # TODO add environment variable for
-        default_leverage=Decimal(account_leverage)
+def create_exchange_rate_quotes(
+    symbol: str,
+    timeframe: str,
+    start_date: datetime,
+    end_date: datetime,
+) -> tuple[Instrument, list[QuoteTick]]:
+    instrument = TestInstrumentProvider.default_fx_ccy(symbol)
+
+    candles_df = mt5_lib.collect_historical_candlesticks(
+        symbol=symbol,
+        timeframe=timeframe,
+        start_date=start_date,
+        end_date=end_date,
     )
 
-    return backtest_engine
+    candles_df = mt5_lib.combine_date_time(candles_df)
+
+    quote_ticks = []
+
+    for _, candle in candles_df.iterrows():
+        timestamp = pd.Timestamp(candle["datetime"]).value
+
+        bid = float(candle["close"])
+        ask = bid
+
+        quote_ticks.append(
+            QuoteTick(
+                instrument_id=instrument.id,
+                bid_price=instrument.make_price(bid),
+                ask_price=instrument.make_price(ask),
+                bid_size=Quantity.from_int(1),
+                ask_size=Quantity.from_int(1),
+                ts_event=timestamp,
+                ts_init=timestamp,
+            )
+        )
+
+    return instrument, quote_ticks
+
+
+def create_instrument(symbol: str) -> Instrument:
+    symbol_info = mt5_lib.get_symbol_info(symbol)
+
+    if symbol_info is None:
+        raise RuntimeError(f"MT5 symbol '{symbol}' was not found.")
+
+    if symbol_info.trade_calc_mode == mt5.SYMBOL_CALC_MODE_FOREX:
+        return TestInstrumentProvider.default_fx_ccy(symbol)
+
+    if symbol_info.trade_calc_mode == mt5.SYMBOL_CALC_MODE_EXCH_STOCKS:
+        return TestInstrumentProvider.equity(symbol, venue="SIM")
+
+    # TODO - add cfd support
+
+    raise NotImplementedError(
+        f"Unsupported MT5 trade calculation mode "
+        f"{symbol_info.trade_calc_mode} for '{symbol}'. "
+        f"Only FOREX and exchange-traded stocks are currently supported."
+    )
 
 
 def create_backtest_candles(
@@ -299,6 +341,31 @@ def get_backtest_bars(
         return BarDataWrangler(bar_type, instrument).process(
             ema_df[["open", "high", "low", "close"]]
         )
+    
+
+def get_conversion_symbol(
+    instrument: Instrument,
+    account_currency: str,
+) -> str | None:
+    quote_currency = str(instrument.quote_currency)
+
+    if quote_currency == account_currency:
+        return None
+
+    direct_symbol = f"{account_currency}{quote_currency}"
+    inverse_symbol = f"{quote_currency}{account_currency}"
+
+    if mt5.symbol_info(direct_symbol) is not None:
+        return direct_symbol
+
+    if mt5.symbol_info(inverse_symbol) is not None:
+        return inverse_symbol
+
+    raise RuntimeError(
+        f"No FX conversion pair found for "
+        f"{quote_currency}/{account_currency}. "
+        f"Tried '{direct_symbol}' and '{inverse_symbol}'."
+    )
 
 
 def run_symbol_backtest(
@@ -310,11 +377,7 @@ def run_symbol_backtest(
     units_per_lot: Decimal,
     statistics: BacktestStatistics,
 ) -> None:
-    symbol_info = mt5_lib.get_symbol_info(symbol)
-    if symbol_info.trade_calc_mode == mt5.SYMBOL_CALC_MODE_FOREX:
-        instrument = TestInstrumentProvider.default_fx_ccy(symbol)
-    else:
-        instrument = TestInstrumentProvider.equity(symbol, venue="SIM")
+    instrument = create_instrument(symbol)
 
     candles_df = create_backtest_candles(
         symbol=symbol,
@@ -349,7 +412,49 @@ def run_symbol_backtest(
 
     backtest_engine.add_instrument(instrument)
     backtest_engine.add_data(bars)
+
+    account_currency = order_configs["base_currency"]
+    exchange_rate_symbol = get_conversion_symbol(
+        instrument=instrument,
+        account_currency=account_currency,
+    )
+    
+    if exchange_rate_symbol is not None:
+        (
+            exchange_rate_instrument,
+            exchange_rate_quotes,
+        ) = create_exchange_rate_quotes(
+            symbol=exchange_rate_symbol,
+            timeframe=symbol_configs["timeframe"],
+            start_date=symbol_configs["historical_start_time"],
+            end_date=symbol_configs["historical_end_time"],
+        )
+
+        backtest_engine.add_instrument(exchange_rate_instrument)
+        backtest_engine.add_data(exchange_rate_quotes)
+
     backtest_engine.add_strategy(strategy)
+
+
+def create_backtest_engine(
+    account_balance: float,
+    base_currency: str,
+    account_leverage: int
+) -> BacktestEngine:
+    currency = Currency.from_str(base_currency)
+    backtest_engine = BacktestEngine(
+        config=BacktestEngineConfig(logging=LoggingConfig(log_level="ERROR"))
+    )
+    backtest_engine.add_venue(
+        venue=Venue("SIM"),
+        oms_type=OmsType.HEDGING,
+        account_type=AccountType.MARGIN,
+        starting_balances=[Money(account_balance, currency)],
+        base_currency=currency,
+        default_leverage=Decimal(account_leverage)
+    )
+
+    return backtest_engine
 
 
 def run_backtest(
