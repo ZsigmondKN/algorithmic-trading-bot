@@ -36,17 +36,28 @@ def normalise_price_parameters(
 
 def validate_margin_requirement(
     balance: float,
-    leverage: float,
     max_margin_utilisation: float,
     symbol: str,
     lot_size: float,
-    entry_price: float
+    entry_price: float,
+    order_type: str,
 ) -> bool:
-    symbol_info = mt5_lib.get_symbol_info(symbol)
-    
-    notional = lot_size * symbol_info.trade_contract_size * entry_price
+    valid_order_type = mt5_lib.validate_order_direction(order_type)
 
-    required_margin = notional / leverage
+    required_margin = mt5.order_calc_margin(
+        valid_order_type,
+        symbol,
+        lot_size,
+        entry_price,
+    )
+
+    if required_margin is None:
+        raise RuntimeError(
+            f"MT5 was unable to calculate the required margin for "
+            f"symbol={symbol}, lot_size={lot_size}, "
+            f"entry_price={entry_price}."
+        )
+
     margin_utilisation = required_margin / balance
 
     if margin_utilisation > max_margin_utilisation:
@@ -120,11 +131,11 @@ def calculate_lot_size(
 
     margin_requirements_met = validate_margin_requirement(
         balance=balance,
-        leverage=account_leverage,
         max_margin_utilisation=max_margin_utilisation,
         symbol=symbol,
         lot_size=lot_size,
         entry_price=entry_price,
+        order_type=order_type,
     )
     
     # TODO Also add a maximum simultaneous exposure check

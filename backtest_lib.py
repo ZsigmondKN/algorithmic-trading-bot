@@ -16,13 +16,15 @@ from nautilus_trader.backtest.engine import BacktestEngine
 from nautilus_trader.config import BacktestEngineConfig, LoggingConfig, StrategyConfig
 from nautilus_trader.model import Money, Currency
 from nautilus_trader.model.data import Bar, BarType, QuoteTick
-from nautilus_trader.model.enums import AccountType, OmsType, OrderSide, OrderType
+from nautilus_trader.model.enums import (
+    AccountType, AssetClass, OmsType, OrderSide, OrderType
+)
 from nautilus_trader.model.events import PositionClosed
-from nautilus_trader.model.identifiers import InstrumentId, Venue
-from nautilus_trader.model.instruments import Instrument
-from nautilus_trader.model.objects import Quantity
+from nautilus_trader.model.identifiers import InstrumentId, Symbol, Venue
+from nautilus_trader.model.instruments import Instrument, Cfd
+from nautilus_trader.model.objects import Price, Quantity
 from nautilus_trader.persistence.wranglers import BarDataWrangler
-from nautilus_trader.test_kit.providers import TestInstrumentProvider
+from nautilus_trader.test_kit.providers import TestInstrumentProvider # TODO consider if I should still be using this
 from nautilus_trader.trading.strategy import Strategy
 import pandas as pd
 
@@ -267,24 +269,146 @@ def create_exchange_rate_quotes(
     return instrument, quote_ticks
 
 
-def create_instrument(symbol: str) -> Instrument:
-    symbol_info = mt5_lib.get_symbol_info(symbol)
+CFD_ASSET_CLASSES = {
+    "UK100.cash": AssetClass.INDEX,
+    "US500.cash": AssetClass.INDEX,
+    "AAPL": AssetClass.EQUITY,
+    "XAUUSD": AssetClass.COMMODITY,
+}
 
+def get_cfd_asset_class(symbol: str) -> AssetClass:
+    try:
+        return CFD_ASSET_CLASSES[symbol]
+    except KeyError:
+        raise NotImplementedError(
+            f"No asset class configured for CFD '{symbol}'. "
+            f"Add '{symbol}' to CFD_ASSET_CLASSES before backtesting."
+        )
+
+
+def assign_cfd_parameters_from_mt5(symbol_info: mt5.SymbolInfo) -> Cfd:
+    tick_size = Decimal(str(symbol_info.trade_tick_size))
+    volume_step = Decimal(str(symbol_info.volume_step))
+    contract_size = mt5_lib.get_units_per_lot(symbol_info) # TODO create own getters with validation like this for the others
+    volume_min = Decimal(str(symbol_info.volume_min))
+    volume_max = Decimal(str(symbol_info.volume_max))
+
+    if tick_size <= 0:
+        raise RuntimeError(
+            f"Invalid tick size for '{symbol_info.name}': {tick_size}"
+        )
+
+    if volume_step <= 0:
+        raise RuntimeError(
+            f"Invalid volume step for '{symbol_info.name}': {volume_step}"
+        )
+
+    if contract_size <= 0:
+        raise RuntimeError(
+            f"Invalid contract size for '{symbol_info.name}': {contract_size}"
+        )
+
+    if volume_min <= 0:
+        raise RuntimeError(
+            f"Invalid minimum volume for '{symbol_info.name}': {volume_min}"
+        )
+
+    if volume_max < volume_min:
+        raise RuntimeError(
+            f"Invalid volume limits for '{symbol_info.name}': "
+            f"minimum={volume_min}, maximum={volume_max}"
+        )
+
+    if volume_step > volume_max:
+        raise RuntimeError(
+            f"Invalid volume step for '{symbol_info.name}': "
+            f"step={volume_step}, maximum={volume_max}"
+        )
+
+    if symbol_info.digits < 0:
+        raise RuntimeError(
+            f"Invalid price precision for '{symbol_info.name}': "
+            f"{symbol_info.digits}"
+        )
+
+    if not symbol_info.currency_profit:
+        raise RuntimeError(
+            f"MT5 did not provide a profit currency for '{symbol_info.name}'."
+        )
+
+    if not symbol_info.currency_base:
+        raise RuntimeError(
+            f"MT5 did not provide a base currency for '{symbol_info.name}'."
+        )
+
+    def _get_decimal_places(value: Decimal) -> int:
+        if not value.is_finite():
+            raise ValueError(
+                f"Expected a finite Decimal, got {value}."
+            )
+
+        exponent = value.as_tuple().exponent
+
+        if not isinstance(exponent, int):
+            raise ValueError(
+                f"Expected an integer Decimal exponent, got {exponent}."
+            )
+
+        if exponent >= 0:
+            return 0
+
+        return -exponent
+
+    size_precision = _get_decimal_places(volume_step)
+
+    if _get_decimal_places(tick_size) > symbol_info.digits:
+        raise RuntimeError(
+            f"Tick size {tick_size} for '{symbol_info.name}' requires more "
+            f"decimal places than MT5 digits={symbol_info.digits}."
+        )
+
+    return Cfd(
+        instrument_id=InstrumentId.from_str(f"{symbol_info.name}.SIM"),
+        raw_symbol=Symbol(symbol_info.name),
+        asset_class=get_cfd_asset_class(symbol_info.name),
+        base_currency=Currency.from_str(symbol_info.currency_base),
+        quote_currency=Currency.from_str(symbol_info.currency_profit),
+
+        price_precision=symbol_info.digits,
+        price_increment=Price.from_str(str(tick_size)),
+
+        size_precision=size_precision,
+        size_increment=Quantity.from_str(str(volume_step)),
+
+        lot_size=Quantity.from_str(str(contract_size)),
+        min_quantity=Quantity.from_str(str(volume_min)),
+        max_quantity=Quantity.from_str(str(volume_max)),
+
+        ts_event=0,
+        ts_init=0,
+    )
+
+
+def create_instrument(symbol_info: mt5.SymbolInfo) -> Instrument:
     if symbol_info is None:
         raise RuntimeError(f"MT5 symbol '{symbol}' was not found.")
 
     if symbol_info.trade_calc_mode == mt5.SYMBOL_CALC_MODE_FOREX:
-        return TestInstrumentProvider.default_fx_ccy(symbol)
+        return TestInstrumentProvider.default_fx_ccy(symbol_info.name)
 
     if symbol_info.trade_calc_mode == mt5.SYMBOL_CALC_MODE_EXCH_STOCKS:
-        return TestInstrumentProvider.equity(symbol, venue="SIM")
+        return TestInstrumentProvider.equity(symbol_info.name, venue="SIM")
 
-    # TODO - add cfd support
+    if symbol_info.trade_calc_mode in (
+        mt5.SYMBOL_CALC_MODE_CFD,
+        mt5.SYMBOL_CALC_MODE_CFDINDEX,
+        mt5.SYMBOL_CALC_MODE_CFDLEVERAGE,
+    ):
+        return assign_cfd_parameters_from_mt5(symbol_info)
 
     raise NotImplementedError(
         f"Unsupported MT5 trade calculation mode "
-        f"{symbol_info.trade_calc_mode} for '{symbol}'. "
-        f"Only FOREX and exchange-traded stocks are currently supported."
+        f"{symbol_info.trade_calc_mode} for '{symbol_info.name}'."
     )
 
 
@@ -374,10 +498,12 @@ def run_symbol_backtest(
     symbol_configs: dict,
     order_configs: dict,
     strategy_configs: dict,
-    units_per_lot: Decimal,
     statistics: BacktestStatistics,
 ) -> None:
-    instrument = create_instrument(symbol)
+    symbol_info = mt5_lib.get_symbol_info(symbol)
+
+    instrument = create_instrument(symbol_info)
+    units_per_lot = mt5_lib.get_units_per_lot(symbol_info)
 
     candles_df = create_backtest_candles(
         symbol=symbol,
@@ -471,7 +597,6 @@ def run_backtest(
     statistics = BacktestStatistics()
 
     for symbol in symbol_configs["symbols"]:
-        units_per_lot = mt5_lib.get_units_per_lot(symbol)
         backtest_engine = create_backtest_engine(
             account_balance=account_balance,
             base_currency=order_configs["base_currency"],
@@ -486,7 +611,6 @@ def run_backtest(
             symbol_configs=symbol_configs,
             order_configs=order_configs,
             strategy_configs=strategy_configs,
-            units_per_lot=units_per_lot,
             statistics=statistics
         )
 

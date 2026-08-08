@@ -179,13 +179,13 @@ def validate_order_type(order_type: str) -> int:
         raise ValueError(f"Unsupported order type: '{order_type}'.")
 
 
-def get_units_per_lot(symbol: str) -> Decimal:
-    symbol_info = get_symbol_info(symbol)
+def get_units_per_lot(symbol_info: mt5.SymbolInfo) -> Decimal:
     contract_size = symbol_info.trade_contract_size
 
     if contract_size <= 0:
         raise ValueError(
-            f"Invalid trade_contract_size={contract_size} for '{symbol}'."
+            f"Invalid trade_contract_size={contract_size} "
+            f"for '{symbol_info.name}'."
         )
 
     return Decimal(str(contract_size))
