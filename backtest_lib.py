@@ -24,7 +24,7 @@ from nautilus_trader.model.identifiers import InstrumentId, Symbol, Venue
 from nautilus_trader.model.instruments import Instrument, Cfd
 from nautilus_trader.model.objects import Price, Quantity
 from nautilus_trader.persistence.wranglers import BarDataWrangler
-from nautilus_trader.test_kit.providers import TestInstrumentProvider # TODO consider if I should still be using this
+from nautilus_trader.test_kit.providers import TestInstrumentProvider
 from nautilus_trader.trading.strategy import Strategy
 import pandas as pd
 
@@ -70,7 +70,6 @@ class EMACrossConfig(StrategyConfig, frozen=True):
     instrument_id: InstrumentId
     bar_type: BarType
     symbol: str
-    account_leverage: int
     risk_percentage: float
     max_margin_utilisation: float
     units_per_lot: Decimal
@@ -145,7 +144,6 @@ class EMACross(Strategy):
 
         lot_size = order_lib.calculate_lot_size(
             balance=balance,
-            account_leverage=self.config.account_leverage,
             risk_percentage=self.config.risk_percentage,
             max_margin_utilisation=self.config.max_margin_utilisation,
             order_type=order_type,
@@ -526,7 +524,6 @@ def run_symbol_backtest(
         EMACrossConfig(
             instrument_id=instrument.id,
             symbol=symbol,
-            account_leverage=order_configs["account_leverage"],
             risk_percentage=order_configs["risk_percentage_per_trade"],
             max_margin_utilisation=order_configs["max_margin_utilisation"],
             units_per_lot=units_per_lot,
@@ -565,7 +562,6 @@ def run_symbol_backtest(
 def create_backtest_engine(
     account_balance: float,
     base_currency: str,
-    account_leverage: int
 ) -> BacktestEngine:
     currency = Currency.from_str(base_currency)
     backtest_engine = BacktestEngine(
@@ -577,7 +573,6 @@ def create_backtest_engine(
         account_type=AccountType.MARGIN,
         starting_balances=[Money(account_balance, currency)],
         base_currency=currency,
-        default_leverage=Decimal(account_leverage)
     )
 
     return backtest_engine
@@ -600,7 +595,6 @@ def run_backtest(
         backtest_engine = create_backtest_engine(
             account_balance=account_balance,
             base_currency=order_configs["base_currency"],
-            account_leverage=order_configs["account_leverage"]
         )
 
         logging.info(f"Running backtest on {symbol} symbol.")

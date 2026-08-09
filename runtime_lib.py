@@ -28,13 +28,11 @@ def log_setup_config(
 
     risk_reward_ratio = order_configs["risk_reward_ratio"]
     risk_percentage_per_trade = order_configs["risk_percentage_per_trade"]
-    account_leverage = order_configs["account_leverage"]
     max_margin_utilisation = order_configs["max_margin_utilisation"]
 
 
     logging.info(
-        f"Using account {user_name}, on server {server}, "
-        f"with leverage of 1:{account_leverage}."
+        f"Using account {user_name}, on server {server}."
     )
     logging.info(
         f"Using a time frame of {timeframe}, for the following symbols: {symbols}."

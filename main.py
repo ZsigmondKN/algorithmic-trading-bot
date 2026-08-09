@@ -23,6 +23,8 @@ def main() -> None:
     symbol_configs = config.load_symbol_configs()
     order_configs = config.load_order_configs()
     strategy_configs = config.load_strategy_configs()
+    config.load_and_set_ui_config()
+
     runtime_lib.log_setup_config(
         mt5_configs=mt5_configs,
         symbol_configs=symbol_configs,

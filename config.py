@@ -17,9 +17,9 @@ MAXIMUM_MT5_CANDLE_COUNT_PER_REQUEST = 50000
 # Runtime constants
 STRATEGY_CHECK_FREQUENCY = 10
 
-# Order placing constants
+# Order constants
 LOT_SIZE_CALCULATION_VALUE = 1.0
-ORDER_FULFILL_TIME = mt5.ORDER_TIME_GTC  # The order stays in the queue until it is manually canceled
+ORDER_FULFILL_TIME = mt5.ORDER_TIME_GTC  # Remains active until canceled
 
 # Backtesting constants
 MT5_TIMEFRAME_TO_NAUTILUS_BAR = {
@@ -39,14 +39,6 @@ EMA_WARMUP_MULTIPLIER = 1.5
 
 # Logging constants
 LOGGING_INDENT = " " * 17
-
-# Logging config
-# TODO: Add a config setting to change the logging level.
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s: %(message)s",
-    datefmt="%H:%M:%S",
-)
 
 
 def parse_bool(value: str) -> bool:
@@ -94,7 +86,6 @@ def load_symbol_configs() -> dict[str, Any]:
 def load_order_configs() -> dict[str, Any]:
     return {
         "base_currency": getenv_required("BASE_CURRENCY"),
-        "account_leverage": int(getenv_required("ACCOUNT_LEVERAGE")),
         "risk_reward_ratio": float(getenv_required("RISK_REWARD_RATIO")),
         "risk_percentage_per_trade": float(
             getenv_required("RISK_PERCENTAGE_PER_TRADE")
@@ -111,3 +102,11 @@ def load_strategy_configs() -> dict[str, Any]:
         "ema_period_one": int(getenv_required("EMA_PERIOD_ONE")),
         "ema_period_two": int(getenv_required("EMA_PERIOD_TWO")),
     }
+
+
+def load_and_set_ui_config() -> None:
+    logging.basicConfig(
+        level=getenv_required("LOGGING_LEVEL"),
+        format="%(asctime)s - %(levelname)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )

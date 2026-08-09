@@ -87,7 +87,6 @@ def normalise_lot_size(symbol_info: mt5.SymbolInfo, lot_size: float) -> float:
 
 def calculate_lot_size(
     balance: float,
-    account_leverage: int,
     risk_percentage: float,
     max_margin_utilisation: float,
     order_type: str,

@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any, Protocol
 import numpy as np
 
-# Constants
+
 ORDER_TYPE_BUY: int
 ORDER_TYPE_SELL: int
 ORDER_TYPE_BUY_STOP: int
@@ -34,7 +34,6 @@ class SymbolInfo:
     trade_tick_size: float
     currency_profit: str
     currency_base: str
-
 
 
 class AccountInfo:
