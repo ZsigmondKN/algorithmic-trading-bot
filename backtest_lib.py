@@ -72,7 +72,7 @@ class EMACrossConfig(StrategyConfig, frozen=True):
     symbol: str
     risk_percentage: float
     max_margin_utilisation: float
-    units_per_lot: Decimal
+    contract_size: Decimal
     ema_df: pd.DataFrame
     statistics: BacktestStatistics
 
@@ -156,7 +156,7 @@ class EMACross(Strategy):
             return None
 
         return instrument.make_qty(
-            Decimal(str(lot_size)) * self.config.units_per_lot
+            Decimal(str(lot_size)) * self.config.contract_size
         )
 
     def buy(self, entry_price: float, stop_loss: float, take_profit: float) -> None:
@@ -266,7 +266,7 @@ def create_exchange_rate_quotes(
 
     return instrument, quote_ticks
 
-
+# TODO move to a .env file
 CFD_ASSET_CLASSES = {
     "UK100.cash": AssetClass.INDEX,
     "US500.cash": AssetClass.INDEX,
@@ -285,31 +285,11 @@ def get_cfd_asset_class(symbol: str) -> AssetClass:
 
 
 def assign_cfd_parameters_from_mt5(symbol_info: mt5.SymbolInfo) -> Cfd:
-    tick_size = Decimal(str(symbol_info.trade_tick_size))
-    volume_step = Decimal(str(symbol_info.volume_step))
-    contract_size = mt5_lib.get_units_per_lot(symbol_info) # TODO create own getters with validation like this for the others
-    volume_min = Decimal(str(symbol_info.volume_min))
-    volume_max = Decimal(str(symbol_info.volume_max))
-
-    if tick_size <= 0:
-        raise RuntimeError(
-            f"Invalid tick size for '{symbol_info.name}': {tick_size}"
-        )
-
-    if volume_step <= 0:
-        raise RuntimeError(
-            f"Invalid volume step for '{symbol_info.name}': {volume_step}"
-        )
-
-    if contract_size <= 0:
-        raise RuntimeError(
-            f"Invalid contract size for '{symbol_info.name}': {contract_size}"
-        )
-
-    if volume_min <= 0:
-        raise RuntimeError(
-            f"Invalid minimum volume for '{symbol_info.name}': {volume_min}"
-        )
+    tick_size = mt5_lib.get_trade_tick_size(symbol_info)
+    contract_size = mt5_lib.get_trade_contract_size(symbol_info)
+    volume_step = mt5_lib.get_volume_step(symbol_info)
+    volume_min = mt5_lib.get_volume_min(symbol_info)
+    volume_max = mt5_lib.get_volume_max(symbol_info)
 
     if volume_max < volume_min:
         raise RuntimeError(
@@ -369,21 +349,26 @@ def assign_cfd_parameters_from_mt5(symbol_info: mt5.SymbolInfo) -> Cfd:
         instrument_id=InstrumentId.from_str(f"{symbol_info.name}.SIM"),
         raw_symbol=Symbol(symbol_info.name),
         asset_class=get_cfd_asset_class(symbol_info.name),
-        base_currency=Currency.from_str(symbol_info.currency_base),
         quote_currency=Currency.from_str(symbol_info.currency_profit),
-
         price_precision=symbol_info.digits,
-        price_increment=Price.from_str(str(tick_size)),
-
         size_precision=size_precision,
+        price_increment=Price.from_str(str(tick_size)),
         size_increment=Quantity.from_str(str(volume_step)),
-
-        lot_size=Quantity.from_str(str(contract_size)),
-        min_quantity=Quantity.from_str(str(volume_min)),
-        max_quantity=Quantity.from_str(str(volume_max)),
-
         ts_event=0,
         ts_init=0,
+        base_currency=Currency.from_str(symbol_info.currency_base),
+        lot_size=Quantity.from_str(str(contract_size)),
+        max_quantity=Quantity.from_str(str(volume_max)),
+        min_quantity=Quantity.from_str(str(volume_min)),
+        margin_init=Decimal("0.01"), # TODO improve realism
+        margin_maint=Decimal("0.01"),
+        maker_fee=Decimal("0.000007"), # TODO improve realism
+        taker_fee=Decimal("0.000007"),
+        info={
+            "mt5_trade_calc_mode": symbol_info.trade_calc_mode,
+            "mt5_trade_contract_size": symbol_info.trade_contract_size,
+            "mt5_trade_tick_size": symbol_info.trade_tick_size,
+        }
     )
 
 
@@ -501,7 +486,7 @@ def run_symbol_backtest(
     symbol_info = mt5_lib.get_symbol_info(symbol)
 
     instrument = create_instrument(symbol_info)
-    units_per_lot = mt5_lib.get_units_per_lot(symbol_info)
+    contract_size = mt5_lib.get_trade_contract_size(symbol_info)
 
     candles_df = create_backtest_candles(
         symbol=symbol,
@@ -526,7 +511,7 @@ def run_symbol_backtest(
             symbol=symbol,
             risk_percentage=order_configs["risk_percentage_per_trade"],
             max_margin_utilisation=order_configs["max_margin_utilisation"],
-            units_per_lot=units_per_lot,
+            contract_size=contract_size,
             ema_df=ema_df,
             bar_type=bar_type,
             statistics=statistics

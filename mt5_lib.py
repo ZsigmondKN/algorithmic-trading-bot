@@ -179,13 +179,60 @@ def validate_order_type(order_type: str) -> int:
         raise ValueError(f"Unsupported order type: '{order_type}'.")
 
 
-def get_units_per_lot(symbol_info: mt5.SymbolInfo) -> Decimal:
+def get_trade_contract_size(symbol_info: mt5.SymbolInfo) -> Decimal:
     contract_size = symbol_info.trade_contract_size
 
     if contract_size <= 0:
         raise ValueError(
-            f"Invalid trade_contract_size={contract_size} "
+            f"Invalid trade contract size of {contract_size} "
             f"for '{symbol_info.name}'."
         )
 
     return Decimal(str(contract_size))
+
+
+def get_trade_tick_size(symbol_info: mt5.SymbolInfo) -> Decimal:
+    tick_size = symbol_info.trade_tick_size
+
+    if tick_size <= 0:
+        raise ValueError(
+            f"Invalid trade tick size of {tick_size} "
+            f"for '{symbol_info.name}'."
+        )
+
+    return Decimal(str(tick_size))
+
+
+def get_volume_step(symbol_info: mt5.SymbolInfo) -> Decimal:
+    volume_step = symbol_info.volume_step
+
+    if volume_step <= 0:
+        raise ValueError(
+            f"Invalid volume step of {volume_step} "
+            f"for '{symbol_info.name}"
+        )
+
+    return Decimal(str(volume_step))
+
+
+def get_volume_min(symbol_info: mt5.SymbolInfo) -> Decimal:
+    volume_min = symbol_info.volume_min
+
+    if volume_min <= 0:
+        raise ValueError(
+            f"Invalid minimum volume of {volume_min} "
+            f"for {symbol_info.name}"
+        )
+
+    return Decimal(str(volume_min))
+
+def get_volume_max(symbol_info: mt5.SymbolInfo) -> Decimal:
+    volume_max = symbol_info.volume_max
+
+    if volume_max <= 0:
+        raise ValueError(
+            f"Invalid maximum volume of {volume_max} "
+            f"for {symbol_info.name}"
+        )
+
+    return Decimal(str(volume_max))
