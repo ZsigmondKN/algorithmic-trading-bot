@@ -92,6 +92,12 @@ def load_order_configs() -> dict[str, Any]:
         ),
         "max_margin_utilisation": float(
             getenv_required("MAX_MARGIN_UTILISATION")
+        ),
+        "fx_commission_usd_per_lot": float(
+            getenv_required("FX_COMMISSION_USD_PER_LOT")
+        ),
+        "cfd_commission_percent": float(
+            getenv_required("CFD_COMMISSION_PERCENT")
         )
     }
 

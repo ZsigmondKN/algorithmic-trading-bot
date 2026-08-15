@@ -266,25 +266,11 @@ def create_exchange_rate_quotes(
 
     return instrument, quote_ticks
 
-# TODO move to a .env file
-CFD_ASSET_CLASSES = {
-    "UK100.cash": AssetClass.INDEX,
-    "US500.cash": AssetClass.INDEX,
-    "AAPL": AssetClass.EQUITY,
-    "XAUUSD": AssetClass.COMMODITY,
-}
 
-def get_cfd_asset_class(symbol: str) -> AssetClass:
-    try:
-        return CFD_ASSET_CLASSES[symbol]
-    except KeyError:
-        raise NotImplementedError(
-            f"No asset class configured for CFD '{symbol}'. "
-            f"Add '{symbol}' to CFD_ASSET_CLASSES before backtesting."
-        )
-
-
-def assign_cfd_parameters_from_mt5(symbol_info: mt5.SymbolInfo) -> Cfd:
+def assign_cfd_parameters_from_mt5(
+        symbol_info: mt5.SymbolInfo,
+        order_commmission: float
+    ) -> Cfd:
     tick_size = mt5_lib.get_trade_tick_size(symbol_info)
     contract_size = mt5_lib.get_trade_contract_size(symbol_info)
     volume_step = mt5_lib.get_volume_step(symbol_info)
@@ -348,7 +334,9 @@ def assign_cfd_parameters_from_mt5(symbol_info: mt5.SymbolInfo) -> Cfd:
     return Cfd(
         instrument_id=InstrumentId.from_str(f"{symbol_info.name}.SIM"),
         raw_symbol=Symbol(symbol_info.name),
-        asset_class=get_cfd_asset_class(symbol_info.name),
+        # The asset class is arbitrary assigned as there is no reliable way to 
+        # automatically retrieve it. Additionally it has no effect on backtesting results.
+        asset_class=AssetClass.COMMODITY,
         quote_currency=Currency.from_str(symbol_info.currency_profit),
         price_precision=symbol_info.digits,
         size_precision=size_precision,
@@ -362,8 +350,8 @@ def assign_cfd_parameters_from_mt5(symbol_info: mt5.SymbolInfo) -> Cfd:
         min_quantity=Quantity.from_str(str(volume_min)),
         margin_init=Decimal("0.01"), # TODO improve realism
         margin_maint=Decimal("0.01"),
-        maker_fee=Decimal("0.000007"), # TODO improve realism
-        taker_fee=Decimal("0.000007"),
+        maker_fee=Decimal(str(order_commmission)),
+        taker_fee=Decimal(str(order_commmission)),
         info={
             "mt5_trade_calc_mode": symbol_info.trade_calc_mode,
             "mt5_trade_contract_size": symbol_info.trade_contract_size,
@@ -372,22 +360,25 @@ def assign_cfd_parameters_from_mt5(symbol_info: mt5.SymbolInfo) -> Cfd:
     )
 
 
-def create_instrument(symbol_info: mt5.SymbolInfo) -> Instrument:
+def create_instrument(symbol_info: mt5.SymbolInfo, order_configs: dict) -> Instrument:
     if symbol_info is None:
-        raise RuntimeError(f"MT5 symbol '{symbol}' was not found.")
+        raise RuntimeError(f"MT5 symbol '{symbol_info.name}' was not found.")
 
+    # TODO implement outside of instrument provider for more control
+    # TODO since the fee for this is in usd/lot the a seperate function will be required
+    # to calculate it and then turn it into the account currency if different.
     if symbol_info.trade_calc_mode == mt5.SYMBOL_CALC_MODE_FOREX:
         return TestInstrumentProvider.default_fx_ccy(symbol_info.name)
-
-    if symbol_info.trade_calc_mode == mt5.SYMBOL_CALC_MODE_EXCH_STOCKS:
-        return TestInstrumentProvider.equity(symbol_info.name, venue="SIM")
 
     if symbol_info.trade_calc_mode in (
         mt5.SYMBOL_CALC_MODE_CFD,
         mt5.SYMBOL_CALC_MODE_CFDINDEX,
         mt5.SYMBOL_CALC_MODE_CFDLEVERAGE,
     ):
-        return assign_cfd_parameters_from_mt5(symbol_info)
+        return assign_cfd_parameters_from_mt5(
+            symbol_info=symbol_info,
+            order_commmission=order_configs["cfd_commission_percent"]
+        )
 
     raise NotImplementedError(
         f"Unsupported MT5 trade calculation mode "
@@ -485,7 +476,10 @@ def run_symbol_backtest(
 ) -> None:
     symbol_info = mt5_lib.get_symbol_info(symbol)
 
-    instrument = create_instrument(symbol_info)
+    instrument = create_instrument(
+        symbol_info=symbol_info, 
+        order_configs=order_configs
+    )
     contract_size = mt5_lib.get_trade_contract_size(symbol_info)
 
     candles_df = create_backtest_candles(
