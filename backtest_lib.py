@@ -21,7 +21,7 @@ from nautilus_trader.model.enums import (
 )
 from nautilus_trader.model.events import PositionClosed
 from nautilus_trader.model.identifiers import InstrumentId, Symbol, Venue
-from nautilus_trader.model.instruments import Instrument, Cfd
+from nautilus_trader.model.instruments import Instrument, Cfd, CurrencyPair
 from nautilus_trader.model.objects import Price, Quantity
 from nautilus_trader.persistence.wranglers import BarDataWrangler
 from nautilus_trader.test_kit.providers import TestInstrumentProvider
@@ -267,117 +267,115 @@ def create_exchange_rate_quotes(
     return instrument, quote_ticks
 
 
-def assign_cfd_parameters_from_mt5(
+def get_decimal_precision(value: Decimal) -> int:
+    if not value.is_finite():
+        raise ValueError(f"Expected a finite Decimal, got {value}.")
+
+    exponent = value.as_tuple().exponent
+
+    if not isinstance(exponent, int):
+        raise ValueError(
+            f"Expected an integer Decimal exponent, got {exponent}."
+        )
+
+    return max(0, -exponent)
+
+def create_instrument_from_mt5(
         symbol_info: mt5.SymbolInfo,
-        order_commmission: float
-    ) -> Cfd:
+        instrument_class: type[Instrument],
+        asset_class: AssetClass,
+        order_commission: float
+    ) -> Instrument:
+    currency_profit = mt5_lib.get_currency_profit(symbol_info)
+    currency_base = mt5_lib.get_currency_base(symbol_info)
+    digits = mt5_lib.get_digits(symbol_info)
     tick_size = mt5_lib.get_trade_tick_size(symbol_info)
     contract_size = mt5_lib.get_trade_contract_size(symbol_info)
     volume_step = mt5_lib.get_volume_step(symbol_info)
     volume_min = mt5_lib.get_volume_min(symbol_info)
     volume_max = mt5_lib.get_volume_max(symbol_info)
 
-    if volume_max < volume_min:
-        raise RuntimeError(
-            f"Invalid volume limits for '{symbol_info.name}': "
-            f"minimum={volume_min}, maximum={volume_max}"
-        )
+    mt5_lib.validate_volume(
+        symbol_info=symbol_info,
+        volume_step=volume_step,
+        volume_min=volume_min,
+        volume_max=volume_max
+    )
 
-    if volume_step > volume_max:
-        raise RuntimeError(
-            f"Invalid volume step for '{symbol_info.name}': "
-            f"step={volume_step}, maximum={volume_max}"
-        )
+    size_precision = get_decimal_precision(volume_step)
 
-    if symbol_info.digits < 0:
-        raise RuntimeError(
-            f"Invalid price precision for '{symbol_info.name}': "
-            f"{symbol_info.digits}"
-        )
-
-    if not symbol_info.currency_profit:
-        raise RuntimeError(
-            f"MT5 did not provide a profit currency for '{symbol_info.name}'."
-        )
-
-    if not symbol_info.currency_base:
-        raise RuntimeError(
-            f"MT5 did not provide a base currency for '{symbol_info.name}'."
-        )
-
-    def _get_decimal_places(value: Decimal) -> int:
-        if not value.is_finite():
-            raise ValueError(
-                f"Expected a finite Decimal, got {value}."
-            )
-
-        exponent = value.as_tuple().exponent
-
-        if not isinstance(exponent, int):
-            raise ValueError(
-                f"Expected an integer Decimal exponent, got {exponent}."
-            )
-
-        if exponent >= 0:
-            return 0
-
-        return -exponent
-
-    size_precision = _get_decimal_places(volume_step)
-
-    if _get_decimal_places(tick_size) > symbol_info.digits:
+    if get_decimal_precision(tick_size) > digits:
         raise RuntimeError(
             f"Tick size {tick_size} for '{symbol_info.name}' requires more "
-            f"decimal places than MT5 digits={symbol_info.digits}."
+            f"decimal places than MT5 digits={digits}."
         )
 
-    return Cfd(
+    return instrument_class(
         instrument_id=InstrumentId.from_str(f"{symbol_info.name}.SIM"),
         raw_symbol=Symbol(symbol_info.name),
-        # The asset class is arbitrary assigned as there is no reliable way to 
-        # automatically retrieve it. Additionally it has no effect on backtesting results.
-        asset_class=AssetClass.COMMODITY,
-        quote_currency=Currency.from_str(symbol_info.currency_profit),
-        price_precision=symbol_info.digits,
+        asset_class=asset_class,
+        quote_currency=Currency.from_str(currency_profit),
+        price_precision=digits,
         size_precision=size_precision,
         price_increment=Price.from_str(str(tick_size)),
         size_increment=Quantity.from_str(str(volume_step)),
         ts_event=0,
         ts_init=0,
-        base_currency=Currency.from_str(symbol_info.currency_base),
+        base_currency=Currency.from_str(currency_base),
         lot_size=Quantity.from_str(str(contract_size)),
         max_quantity=Quantity.from_str(str(volume_max)),
         min_quantity=Quantity.from_str(str(volume_min)),
-        margin_init=Decimal("0.01"), # TODO improve realism
-        margin_maint=Decimal("0.01"),
-        maker_fee=Decimal(str(order_commmission)),
-        taker_fee=Decimal(str(order_commmission)),
-        info={
-            "mt5_trade_calc_mode": symbol_info.trade_calc_mode,
-            "mt5_trade_contract_size": symbol_info.trade_contract_size,
-            "mt5_trade_tick_size": symbol_info.trade_tick_size,
-        }
+        maker_fee=Decimal(str(order_commission)),
+        taker_fee=Decimal(str(order_commission))
+    )
+
+
+def create_fx(
+        symbol_info: mt5.SymbolInfo,
+        order_commission: float,
+    ) -> CurrencyPair:
+    return create_instrument_from_mt5(
+        symbol_info=symbol_info,
+        instrument_class=CurrencyPair,
+        asset_class=AssetClass.FX,
+        order_commission=order_commission
+    )
+
+
+def crate_cfd(
+        symbol_info: mt5.SymbolInfo,
+        order_commission: float,
+    ) -> Cfd:
+    return create_instrument_from_mt5(
+        symbol_info=symbol_info,
+        instrument_class=Cfd,
+        # The asset class is arbitrary assigned as there is no reliable way to 
+        # automatically retrieve it. Additionally it has no effect on backtesting results.
+        asset_class=AssetClass.COMMODITY,
+        order_commission=order_commission
     )
 
 
 def create_instrument(symbol_info: mt5.SymbolInfo, order_configs: dict) -> Instrument:
     if symbol_info is None:
-        raise RuntimeError(f"MT5 symbol '{symbol_info.name}' was not found.")
+        raise RuntimeError("MT5 symbol was not found.")
 
-    # TODO implement outside of instrument provider for more control
-    # TODO since the fee for this is in usd/lot the a seperate function will be required
-    # to calculate it and then turn it into the account currency if different.
     if symbol_info.trade_calc_mode == mt5.SYMBOL_CALC_MODE_FOREX:
-        return TestInstrumentProvider.default_fx_ccy(symbol_info.name)
+        return create_fx(
+            symbol_info=symbol_info,
+            # TODO since the fee for this is in usd/lot the a seperate function will be required
+            # to calculate it and then turn it into the account currency if different.
+            order_commission=order_configs["cfd_commission_percent"]
+        )
 
     if symbol_info.trade_calc_mode in (
         mt5.SYMBOL_CALC_MODE_CFD,
         mt5.SYMBOL_CALC_MODE_CFDINDEX,
         mt5.SYMBOL_CALC_MODE_CFDLEVERAGE,
     ):
-        return assign_cfd_parameters_from_mt5(
+        return crate_cfd(
             symbol_info=symbol_info,
-            order_commmission=order_configs["cfd_commission_percent"]
+            order_commission=order_configs["cfd_commission_percent"]
         )
 
     raise NotImplementedError(

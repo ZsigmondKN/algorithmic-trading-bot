@@ -179,16 +179,38 @@ def validate_order_type(order_type: str) -> int:
         raise ValueError(f"Unsupported order type: '{order_type}'.")
 
 
-def get_trade_contract_size(symbol_info: mt5.SymbolInfo) -> Decimal:
-    contract_size = symbol_info.trade_contract_size
+def get_currency_profit(symbol_info: mt5.SymbolInfo) -> str:
+    currency_profit = symbol_info.currency_profit
 
-    if contract_size <= 0:
-        raise ValueError(
-            f"Invalid trade contract size of {contract_size} "
-            f"for '{symbol_info.name}'."
+    if not currency_profit:
+        raise RuntimeError(
+            f"MT5 did not provide a profit currency for '{symbol_info.name}'."
         )
 
-    return Decimal(str(contract_size))
+    return currency_profit
+
+
+def get_currency_base(symbol_info: mt5.SymbolInfo) -> str:
+    currency_base = symbol_info.currency_base
+
+    if not currency_base:
+        raise RuntimeError(
+            f"MT5 did not provide a base currency for '{symbol_info.name}'."
+        )
+
+    return currency_base
+
+
+def get_digits(symbol_info: mt5.SymbolInfo) -> int:
+    digits = symbol_info.digits
+
+    if digits < 0:
+            raise RuntimeError(
+                f"Invalid price precision of {digits} "
+                f"for {symbol_info.name}"
+            )
+
+    return digits
 
 
 def get_trade_tick_size(symbol_info: mt5.SymbolInfo) -> Decimal:
@@ -201,6 +223,18 @@ def get_trade_tick_size(symbol_info: mt5.SymbolInfo) -> Decimal:
         )
 
     return Decimal(str(tick_size))
+
+
+def get_trade_contract_size(symbol_info: mt5.SymbolInfo) -> Decimal:
+    contract_size = symbol_info.trade_contract_size
+
+    if contract_size <= 0:
+        raise ValueError(
+            f"Invalid trade contract size of {contract_size} "
+            f"for '{symbol_info.name}'."
+        )
+
+    return Decimal(str(contract_size))
 
 
 def get_volume_step(symbol_info: mt5.SymbolInfo) -> Decimal:
@@ -236,3 +270,22 @@ def get_volume_max(symbol_info: mt5.SymbolInfo) -> Decimal:
         )
 
     return Decimal(str(volume_max))
+
+
+def validate_volume(
+    symbol_info: mt5.SymbolInfo,
+    volume_min: Decimal,
+    volume_max: Decimal,
+    volume_step: Decimal
+) -> None:
+    if volume_max < volume_min:
+        raise RuntimeError(
+            f"Invalid volume limits for '{symbol_info.name}': "
+            f"minimum={volume_min}, maximum={volume_max}"
+        )
+
+    if volume_step > volume_max:
+        raise RuntimeError(
+            f"Invalid volume step for '{symbol_info.name}': "
+            f"step={volume_step}, maximum={volume_max}"
+        )
