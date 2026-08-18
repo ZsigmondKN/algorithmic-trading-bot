@@ -145,6 +145,41 @@ def collect_historical_candlesticks(
     return dataframe
 
 
+def collect_candlesticks(
+    symbol: str,
+    symbol_configs: dict
+) -> pd.DataFrame:
+    if symbol_configs["historical_timeframe"]:
+        historical_start_time = symbol_configs["historical_start_time"]
+        historical_end_time = symbol_configs["historical_end_time"]
+        candles_df = collect_historical_candlesticks(
+            symbol=symbol,
+            timeframe=symbol_configs["timeframe"],
+            start_date=historical_start_time,
+            end_date=historical_end_time,
+        )
+
+        logging.debug(
+            f"Collecting historical candles for {symbol} from "
+            f"{historical_start_time} till {historical_end_time}."
+        )
+    else:
+        timeframe = symbol_configs["timeframe"]
+        number_of_candles = symbol_configs["number_of_candles"]
+        candles_df = collect_current_candlesticks(
+            symbol=symbol,
+            timeframe=timeframe,
+            number_of_candles=number_of_candles,
+        )
+
+        logging.debug(
+            f"Collecting {number_of_candles} live candles with "
+            f"widths of {timeframe} for {symbol}."
+        )
+
+    return candles_df
+
+
 def get_account_balance() -> float:
     account_info = mt5.account_info()
     if account_info is None:

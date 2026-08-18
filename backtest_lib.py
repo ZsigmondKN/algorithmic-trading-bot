@@ -24,7 +24,6 @@ from nautilus_trader.model.identifiers import InstrumentId, Symbol, Venue
 from nautilus_trader.model.instruments import Instrument, Cfd, CurrencyPair
 from nautilus_trader.model.objects import Price, Quantity
 from nautilus_trader.persistence.wranglers import BarDataWrangler
-from nautilus_trader.test_kit.providers import TestInstrumentProvider
 from nautilus_trader.trading.strategy import Strategy
 import pandas as pd
 
@@ -227,46 +226,6 @@ class EMACross(Strategy):
         self.close_all_positions(self.config.instrument_id)
 
 
-def create_exchange_rate_quotes(
-    symbol: str,
-    timeframe: str,
-    start_date: datetime,
-    end_date: datetime,
-) -> tuple[Instrument, list[QuoteTick]]:
-    instrument = TestInstrumentProvider.default_fx_ccy(symbol)
-
-    candles_df = mt5_lib.collect_historical_candlesticks(
-        symbol=symbol,
-        timeframe=timeframe,
-        start_date=start_date,
-        end_date=end_date,
-    )
-
-    candles_df = mt5_lib.combine_date_time(candles_df)
-
-    quote_ticks = []
-
-    for _, candle in candles_df.iterrows():
-        timestamp = pd.Timestamp(candle["datetime"]).value
-
-        bid = float(candle["close"])
-        ask = bid
-
-        quote_ticks.append(
-            QuoteTick(
-                instrument_id=instrument.id,
-                bid_price=instrument.make_price(bid),
-                ask_price=instrument.make_price(ask),
-                bid_size=Quantity.from_int(1),
-                ask_size=Quantity.from_int(1),
-                ts_event=timestamp,
-                ts_init=timestamp,
-            )
-        )
-
-    return instrument, quote_ticks
-
-
 def get_decimal_precision(value: Decimal) -> int:
     if not value.is_finite():
         raise ValueError(f"Expected a finite Decimal, got {value}.")
@@ -365,7 +324,7 @@ def create_instrument(symbol_info: mt5.SymbolInfo, order_configs: dict) -> Instr
             symbol_info=symbol_info,
             # TODO since the fee for this is in usd/lot the a seperate function will be required
             # to calculate it and then turn it into the account currency if different.
-            order_commission=order_configs["cfd_commission_percent"]
+            order_commission=order_configs["cfd_commission_percent"] # Temp value
         )
 
     if symbol_info.trade_calc_mode in (
@@ -382,42 +341,6 @@ def create_instrument(symbol_info: mt5.SymbolInfo, order_configs: dict) -> Instr
         f"Unsupported MT5 trade calculation mode "
         f"{symbol_info.trade_calc_mode} for '{symbol_info.name}'."
     )
-
-
-def create_backtest_candles(
-    symbol: str,
-    symbol_configs: dict
-) -> pd.DataFrame:
-    if symbol_configs["historical_timeframe"]:
-        historical_start_time = symbol_configs["historical_start_time"]
-        historical_end_time = symbol_configs["historical_end_time"]
-
-        candles_df = mt5_lib.collect_historical_candlesticks(
-            symbol=symbol,
-            timeframe=symbol_configs["timeframe"],
-            start_date=historical_start_time,
-            end_date=historical_end_time,
-        )
-
-        logging.debug(
-            f"Backtesting {symbol} on historical data from "
-            f"{historical_start_time} till {historical_end_time}."
-        )
-    else:
-        timeframe = symbol_configs["timeframe"]
-        number_of_candles = symbol_configs["number_of_candles"]
-        candles_df = mt5_lib.collect_current_candlesticks(
-            symbol=symbol,
-            timeframe=timeframe,
-            number_of_candles=number_of_candles,
-        )
-
-        logging.debug(
-            f"Backtesting {symbol} on {number_of_candles} live candles, "
-            f"with widths of {timeframe}."
-        )
-
-    return candles_df
 
 
 def get_backtest_bars(
@@ -464,6 +387,44 @@ def get_conversion_symbol(
     )
 
 
+def create_exchange_rate_quotes(
+    symbol: str,
+    symbol_info: mt5.SymbolInfo,
+    symbol_configs: dict,
+) -> tuple[Instrument, list[QuoteTick]]:
+    symbol_info = mt5_lib.get_symbol_info(symbol)
+
+    instrument = create_fx(
+        symbol_info=symbol_info,
+        order_commission=0.0, # TODO find and add reallistic value
+    )
+
+    candles_df = mt5_lib.collect_candlesticks(
+        symbol=symbol,
+        symbol_configs=symbol_configs,
+    )
+    candles_df = mt5_lib.combine_date_time(candles_df) # TODO apply inversly
+
+    quote_ticks = []
+    for _, candle in candles_df.iterrows():
+        timestamp = pd.Timestamp(candle["datetime"]).value
+        price = instrument.make_price(float(candle["close"]))
+
+        quote_ticks.append(
+            QuoteTick(
+                instrument_id=instrument.id,
+                bid_price=price,
+                ask_price=price,
+                bid_size=Quantity.from_int(1),
+                ask_size=Quantity.from_int(1),
+                ts_event=timestamp,
+                ts_init=timestamp,
+            )
+        )
+
+    return instrument, quote_ticks
+
+
 def run_symbol_backtest(
     backtest_engine: BacktestEngine,
     symbol: str,
@@ -480,14 +441,14 @@ def run_symbol_backtest(
     )
     contract_size = mt5_lib.get_trade_contract_size(symbol_info)
 
-    candles_df = create_backtest_candles(
+    candles_df = mt5_lib.collect_candlesticks(
         symbol=symbol,
         symbol_configs=symbol_configs,
     )
     candles_df = mt5_lib.combine_date_time(candles_df)
-    ema_df = ema_lib.create_ema_dataframe(
+    ema_df = ema_lib.create_ema_df(
         symbol=symbol,
-        candle_dataframe=candles_df.copy(),
+        candles_df=candles_df.copy(),
         risk_reward_ratio=order_configs["risk_reward_ratio"],
         ema_period_one=strategy_configs["ema_period_one"],
         ema_period_two=strategy_configs["ema_period_two"],
@@ -524,10 +485,9 @@ def run_symbol_backtest(
             exchange_rate_instrument,
             exchange_rate_quotes,
         ) = create_exchange_rate_quotes(
-            symbol=exchange_rate_symbol,
-            timeframe=symbol_configs["timeframe"],
-            start_date=symbol_configs["historical_start_time"],
-            end_date=symbol_configs["historical_end_time"],
+            symbol=symbol,
+            symbol_info=symbol_info,
+            symbol_configs=symbol_configs
         )
 
         backtest_engine.add_instrument(exchange_rate_instrument)

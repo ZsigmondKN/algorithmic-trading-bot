@@ -17,14 +17,14 @@ def ema_cross_strategy(
 ) -> str:
     report = ""
 
-    candle_dataframe = mt5_lib.collect_current_candlesticks(
+    candles_df = mt5_lib.collect_current_candlesticks(
         symbol,
         symbol_configs["timeframe"],
         int(symbol_configs["number_of_candles"])
     )
-    ema_df = ema_lib.create_ema_dataframe(
+    ema_df = ema_lib.create_ema_df(
         symbol,
-        candle_dataframe,
+        candles_df,
         float(order_configs["risk_reward_ratio"]),
         int(strategy_configs["ema_period_one"]),
         int(strategy_configs["ema_period_two"]),

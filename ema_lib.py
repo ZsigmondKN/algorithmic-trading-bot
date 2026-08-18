@@ -23,7 +23,7 @@ def check_and_order_emas(ema_period_one: int, ema_period_two: int) -> tuple[int,
     return min(ema_period_one, ema_period_two), max(ema_period_one, ema_period_two)
 
 
-def add_ema_to_dataframe(dataframe: pd.DataFrame, ema_period: int) -> pd.DataFrame:
+def add_ema_to_df(dataframe: pd.DataFrame, ema_period: int) -> pd.DataFrame:
     ema_column = f"ema_{ema_period}"
 
     # Add an EMA column to the dataframe using pandas' Exponential Moving Window (EWM)
@@ -37,7 +37,7 @@ def add_ema_to_dataframe(dataframe: pd.DataFrame, ema_period: int) -> pd.DataFra
     return dataframe
 
 
-def add_ema_cross_and_action_to_dataframe(
+def add_ema_cross_and_action_to_df(
     dataframe: pd.DataFrame,
     warmup_period: int,
     faster_ema_period: int,
@@ -97,7 +97,7 @@ def calculate_order_parameters(
     return entry_price, stop_loss, take_profit
 
 
-def add_ema_trade_parameters_to_dataframe(
+def add_ema_trade_parameters_to_df(
     dataframe: pd.DataFrame,
     risk_reward_ratio: float,
     faster_ema_period: int,
@@ -129,9 +129,9 @@ def add_ema_trade_parameters_to_dataframe(
     return dataframe
 
 
-def create_ema_dataframe(
+def create_ema_df(
     symbol: str,
-    candle_dataframe: pd.DataFrame,
+    candles_df: pd.DataFrame,
     risk_reward_ratio: float,
     ema_period_one: int,
     ema_period_two: int,
@@ -143,25 +143,25 @@ def create_ema_dataframe(
         max(faster_ema_period, slower_ema_period) * EMA_WARMUP_MULTIPLIER
     )
 
-    candle_dataframe.insert(0, "symbol", symbol)
+    candles_df.insert(0, "symbol", symbol)
 
     # Add EMA values and trade parameters
-    candle_dataframe = add_ema_to_dataframe(candle_dataframe, faster_ema_period)
-    candle_dataframe = add_ema_to_dataframe(candle_dataframe, slower_ema_period)
-    candle_dataframe = add_ema_cross_and_action_to_dataframe(
-        dataframe=candle_dataframe,
+    candles_df = add_ema_to_df(candles_df, faster_ema_period)
+    candles_df = add_ema_to_df(candles_df, slower_ema_period)
+    candles_df = add_ema_cross_and_action_to_df(
+        dataframe=candles_df,
         warmup_period=warmup_period,
         faster_ema_period=faster_ema_period,
         slower_ema_period=slower_ema_period
     )
-    candle_dataframe = add_ema_trade_parameters_to_dataframe(
-        dataframe=candle_dataframe,
+    candles_df = add_ema_trade_parameters_to_df(
+        dataframe=candles_df,
         risk_reward_ratio=risk_reward_ratio,
         faster_ema_period=faster_ema_period,
         slower_ema_period=slower_ema_period
     )
 
-    return candle_dataframe
+    return candles_df
 
 
 def log_ema_crosses(ema_df: pd.DataFrame, verbose: bool = False) -> None:
@@ -321,26 +321,16 @@ def generate_ema_report(
 ) -> None:
     combined_ema_df = pd.DataFrame()
     for symbol in symbol_configs["symbols"]:
-        if symbol_configs["historical_timeframe"]:
-            candle_dataframe = mt5_lib.collect_historical_candlesticks(
-                symbol,
-                symbol_configs["timeframe"],
-                symbol_configs["historical_start_time"],
-                symbol_configs["historical_end_time"]
-            )
-        else:
-            candle_dataframe = mt5_lib.collect_current_candlesticks(
-                symbol,
-                symbol_configs["timeframe"],
-                int(symbol_configs["number_of_candles"])
-            )
-        
-        symbol_ema_df = create_ema_dataframe(
-            symbol,
-            candle_dataframe,
-            order_configs["risk_reward_ratio"],
-            strategy_configs["ema_period_one"],
-            strategy_configs["ema_period_two"],
+        candles_df = mt5_lib.collect_candlesticks(
+            symbol=symbol,
+            symbol_configs=symbol_configs,
+        )
+        symbol_ema_df = create_ema_df(
+            symbol=symbol,
+            candles_df=candles_df,
+            risk_reward_ratio=order_configs["risk_reward_ratio"],
+            ema_period_one=strategy_configs["ema_period_one"],
+            ema_period_two=strategy_configs["ema_period_two"],
         )
         combined_ema_df = pd.concat([combined_ema_df, symbol_ema_df], ignore_index=True)
 
