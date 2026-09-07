@@ -28,7 +28,7 @@ from nautilus_trader.persistence.wranglers import BarDataWrangler
 from nautilus_trader.trading.strategy import Strategy
 import pandas as pd
 
-from config import LOGGING_INDENT, MOCK_ACCOUNT_INFO, MT5_TIMEFRAME_TO_NAUTILUS_BAR
+from config import LOGGING_INDENT, MT5_TIMEFRAME_TO_NAUTILUS_BAR
 import ema_lib
 import mt5_lib
 import order_lib
@@ -550,6 +550,7 @@ def run_symbol_backtest(
     symbol_configs: dict,
     order_configs: dict,
     strategy_configs: dict,
+    account_currency: str,
     backtest_statistics: BacktestStatistics,
 ) -> None:
     symbol_info = mt5_lib.get_symbol_info(symbol)
@@ -573,7 +574,6 @@ def run_symbol_backtest(
     bar_type = BarType.from_str(f"{symbol}.SIM-{bar_time}-LAST-EXTERNAL")
     bars = get_backtest_bars(bar_type, instrument, ema_df)
 
-    account_currency = mt5_lib.get_account_info().currency
     exchange_rate_symbol  = get_conversion_symbol(
         instrument=instrument,
         account_currency=account_currency,
@@ -599,7 +599,7 @@ def run_symbol_backtest(
 
     # TODO: FX commission works correctly for USD-based accounts, but not for non-USD ones
     # implement USD-to-account-currency conversion for non-USD accounts.
-    
+
     if exchange_rate_symbol is not None:
         exchange_rate_instrument, exchange_rate_quotes = load_exchange_rate_data(
             symbol=exchange_rate_symbol,
@@ -703,12 +703,20 @@ def run_backtest(
     symbol_configs: dict,
     order_configs: dict,
     strategy_configs: dict,
-    use_real_account_info: bool = True,
+    backtest_config: dict,
 ) -> None:
-    if use_real_account_info:
-        account_info = mt5_lib.get_account_info()
+    if backtest_config["use_test_account"]:
+        account_balance = backtest_config["test_backtest_balance"]
+        account_currency = backtest_config["test_backtest_currency"]
     else:
-        account_info = MOCK_ACCOUNT_INFO
+        account_info = mt5_lib.get_account_info()
+        account_balance = account_info.balance
+        account_currency = account_info.currency
+
+    mt5_lib.log_account_details(
+        account_balance=account_balance,
+        account_currency=account_currency
+    )
 
     # TODO: Verify all FX conversion/accounting behavior is delegated to Nautilus
 
@@ -716,8 +724,8 @@ def run_backtest(
 
     for symbol in symbol_configs["symbols"]:
         backtest_engine, fee_model = create_backtest_engine(
-            account_balance=account_info.balance,
-            base_currency=account_info.currency,
+            account_balance=account_balance,
+            base_currency=account_currency,
             fx_commission_usd_per_lot=Decimal(
                 str(order_configs["fx_commission_usd_per_lot"])
             ),
@@ -734,6 +742,7 @@ def run_backtest(
             symbol_configs=symbol_configs,
             order_configs=order_configs,
             strategy_configs=strategy_configs,
+            account_currency=account_currency,
             backtest_statistics=backtest_statistics
         )
 
@@ -748,7 +757,7 @@ def run_backtest(
             symbol=symbol,
             cache=backtest_engine.cache,
             result=result,
-            base_currency=account_info.currency
+            base_currency=account_currency
         )
         backtest_statistics.reset()
 

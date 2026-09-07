@@ -30,7 +30,6 @@ def log_setup_config(
     risk_percentage_per_trade = order_configs["risk_percentage_per_trade"]
     max_margin_utilisation = order_configs["max_margin_utilisation"]
 
-
     logging.info(
         f"Using account {user_name}, on server {server}."
     )
@@ -42,7 +41,7 @@ def log_setup_config(
         f"a max margin utilisation per trade of {max_margin_utilisation * 100}%."
     )
     logging.info(
-        f"Using a risk-reward ratio of 1:{risk_reward_ratio}.\n"
+        f"Using a risk-reward ratio of 1:{risk_reward_ratio}."
     )
 
 

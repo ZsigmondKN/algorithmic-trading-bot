@@ -178,11 +178,10 @@ def get_account_info() -> mt5.AccountInfo:
     return account_info
 
 
-def log_account_details() -> None:
-    account_info = get_account_info()
+def log_account_details(account_balance: float, account_currency: str) -> None:
     logging.info(
-        f"Using an account with a {account_info.balance:.2f} {account_info.currency} "
-        f"starting balance."
+        f"Using an account with a {account_balance:.2f} {account_currency} "
+        f"starting balance.\n"
     )
 
 

@@ -23,7 +23,11 @@ def main() -> None:
     symbol_configs = config.load_symbol_configs()
     order_configs = config.load_order_configs()
     strategy_configs = config.load_strategy_configs()
+    backtest_config = config.load_backtest_config()
     config.load_and_set_ui_config()
+
+    mt5_lib.login(mt5_configs)
+    mt5_lib.validate_and_initialise_symbols(symbol_configs)
 
     runtime_lib.log_setup_config(
         mt5_configs=mt5_configs,
@@ -31,23 +35,26 @@ def main() -> None:
         order_configs=order_configs
     )
 
-    mt5_lib.login(mt5_configs)
-    mt5_lib.log_account_details()
-    mt5_lib.validate_and_initialise_symbols(symbol_configs)
-
     trading_mode = mt5_configs["trading_mode"]
     if trading_mode == "backtesting":
         backtest_lib.run_backtest(
             symbol_configs=symbol_configs,
             order_configs=order_configs,
             strategy_configs=strategy_configs,
+            backtest_config=backtest_config
         )
     elif trading_mode == "live_trading":
-        ema_lib.generate_ema_report(
-            symbol_configs=symbol_configs,
-            order_configs=order_configs,
-            strategy_configs=strategy_configs
+        account_info = mt5_lib.get_account_info()
+        mt5_lib.log_account_details(
+            account_balance=account_info.balance,
+            account_currency=account_info.currency
         )
+        if strategy_configs["generate_report"]:
+            ema_lib.generate_ema_report(
+                symbol_configs=symbol_configs,
+                order_configs=order_configs,
+                strategy_configs=strategy_configs
+            )
         runtime_lib.run_strategy(
             symbol_configs=symbol_configs,
             order_configs=order_configs,

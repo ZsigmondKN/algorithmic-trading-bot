@@ -33,11 +33,6 @@ MT5_TIMEFRAME_TO_NAUTILUS_BAR = {
     "D1": "1-DAY",
 }
 
-MOCK_ACCOUNT_INFO = SimpleNamespace(
-    balance=500000.0,
-    currency="USD",
-)
-
 # EMA strategy constants
 EMA_CROSS_STRATEGY = "ema_cross_strategy"
 EMA_WARMUP_MULTIPLIER = 1.5
@@ -108,9 +103,18 @@ def load_order_configs() -> dict[str, Any]:
 
 def load_strategy_configs() -> dict[str, Any]:
     return {
-        "strategy": os.getenv("STRATEGY"),
+        "generate_report": parse_bool(getenv_required("GENERATE_REPORT")),
+        "strategy": getenv_required("STRATEGY"),
         "ema_period_one": int(getenv_required("EMA_PERIOD_ONE")),
-        "ema_period_two": int(getenv_required("EMA_PERIOD_TWO")),
+        "ema_period_two": int(getenv_required("EMA_PERIOD_TWO"))
+    }
+
+
+def load_backtest_config() -> dict[str, Any]:
+    return {
+        "use_test_account": parse_bool(getenv_required("USE_TEST_ACCOUNT")),
+        "test_backtest_balance": float(getenv_required("TEST_BACKTEST_BALANCE")),
+        "test_backtest_currency": getenv_required("TEST_BACKTEST_CURRENCY")
     }
 
 
@@ -118,5 +122,5 @@ def load_and_set_ui_config() -> None:
     logging.basicConfig(
         level=getenv_required("LOGGING_LEVEL"),
         format="%(asctime)s - %(levelname)s: %(message)s",
-        datefmt="%H:%M:%S",
+        datefmt="%H:%M:%S"
     )
