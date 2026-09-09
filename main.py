@@ -49,7 +49,7 @@ def main() -> None:
             account_balance=account_info.balance,
             account_currency=account_info.currency
         )
-        if strategy_configs["generate_report"]:
+        if strategy_configs["generate_strategy_report"]:
             ema_lib.generate_ema_report(
                 symbol_configs=symbol_configs,
                 order_configs=order_configs,

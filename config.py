@@ -6,7 +6,6 @@ Description: ...
 from datetime import datetime, timezone
 import logging
 import os
-from types import SimpleNamespace
 from typing import Any
 
 import MetaTrader5 as mt5
@@ -21,6 +20,9 @@ STRATEGY_CHECK_FREQUENCY = 10
 # Order constants
 LOT_SIZE_CALCULATION_VALUE = 1.0
 ORDER_FULFILL_TIME = mt5.ORDER_TIME_GTC  # Remains active until canceled
+
+# FTMO constants
+FTMO_COMMISSION_CURRENCY = "USD"
 
 # Backtesting constants
 MT5_TIMEFRAME_TO_NAUTILUS_BAR = {
@@ -38,7 +40,8 @@ EMA_CROSS_STRATEGY = "ema_cross_strategy"
 EMA_WARMUP_MULTIPLIER = 1.5
 
 # Logging constants
-LOGGING_INDENT = " " * 17
+LOGGING_INFO_INDENT = " " * 17
+LOGGING_DEBUG_INDENT = " " * 18
 
 
 def parse_bool(value: str) -> bool:
@@ -103,10 +106,12 @@ def load_order_configs() -> dict[str, Any]:
 
 def load_strategy_configs() -> dict[str, Any]:
     return {
-        "generate_report": parse_bool(getenv_required("GENERATE_REPORT")),
         "strategy": getenv_required("STRATEGY"),
         "ema_period_one": int(getenv_required("EMA_PERIOD_ONE")),
-        "ema_period_two": int(getenv_required("EMA_PERIOD_TWO"))
+        "ema_period_two": int(getenv_required("EMA_PERIOD_TWO")),
+        "generate_strategy_report": parse_bool(
+            getenv_required("GENERATE_STRATEGY_REPORT")
+        )
     }
 
 
@@ -114,7 +119,10 @@ def load_backtest_config() -> dict[str, Any]:
     return {
         "use_test_account": parse_bool(getenv_required("USE_TEST_ACCOUNT")),
         "test_backtest_balance": float(getenv_required("TEST_BACKTEST_BALANCE")),
-        "test_backtest_currency": getenv_required("TEST_BACKTEST_CURRENCY")
+        "test_backtest_currency": getenv_required("TEST_BACKTEST_CURRENCY"),
+        "generate_backtest_report": parse_bool(
+            getenv_required("GENERATE_BACKTEST_REPORT")
+        ),
     }
 
 

@@ -8,7 +8,7 @@ from typing import Protocol, TypeVar, Any
 
 import MetaTrader5 as mt5
 
-from config import LOT_SIZE_CALCULATION_VALUE, ORDER_FULFILL_TIME, LOGGING_INDENT
+from config import LOT_SIZE_CALCULATION_VALUE, ORDER_FULFILL_TIME, LOGGING_INFO_INDENT
 import mt5_lib
 
 
@@ -63,7 +63,7 @@ def validate_margin_requirement(
     if margin_utilisation > max_margin_utilisation:
         logging.debug(
             f"Trade rejected - max margin utilisation exceeded.\n"
-            f"{LOGGING_INDENT}Balance={balance:.2f} | "
+            f"{LOGGING_INFO_INDENT}Balance={balance:.2f} | "
             f"Required margin={required_margin:.2f} | "
             f"Required Margin utilisation={margin_utilisation:.2%} | "
             f"Symbol={symbol}"

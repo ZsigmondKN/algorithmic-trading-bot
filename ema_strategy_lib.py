@@ -3,7 +3,7 @@ Author: Zsigmond Kovacs-Nagy
 Description: Compute and use Exponential Moving Averages (EMAs).
 """
 
-from config import LOGGING_INDENT
+from config import LOGGING_INFO_INDENT
 import ema_lib
 import mt5_lib
 import order_lib
@@ -65,6 +65,6 @@ def ema_cross_strategy(
         report += "The EMA values did not cross and so no order was placed.\n"
     
     report += latest_signal.to_frame().T.to_string(index=False)
-    report = report.replace("\n", f"\n{LOGGING_INDENT}")
+    report = report.replace("\n", f"\n{LOGGING_INFO_INDENT}")
 
     return report

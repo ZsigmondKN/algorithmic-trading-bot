@@ -9,7 +9,7 @@ from typing import Callable
 
 import MetaTrader5 as mt5
 
-from config import EMA_CROSS_STRATEGY, LOGGING_INDENT, STRATEGY_CHECK_FREQUENCY
+from config import EMA_CROSS_STRATEGY, LOGGING_INFO_INDENT, STRATEGY_CHECK_FREQUENCY
 import ema_strategy_lib
 import mt5_lib
 import order_lib
@@ -52,7 +52,7 @@ def select_trading_strategy(strategy_configs: dict[str, str]) -> Callable[..., s
 
         logging.info(
             f"Using the EMA cross strategy with periods {ema_period_one} "
-            f"and {ema_period_two}.\n{LOGGING_INDENT}"
+            f"and {ema_period_two}.\n{LOGGING_INFO_INDENT}"
             "Waiting for EMA cross to occur..."
         )
         return ema_strategy_lib.ema_cross_strategy

@@ -28,7 +28,10 @@ from nautilus_trader.persistence.wranglers import BarDataWrangler
 from nautilus_trader.trading.strategy import Strategy
 import pandas as pd
 
-from config import LOGGING_INDENT, MT5_TIMEFRAME_TO_NAUTILUS_BAR
+from config import (
+    FTMO_COMMISSION_CURRENCY, LOGGING_DEBUG_INDENT, LOGGING_INFO_INDENT, 
+    MT5_TIMEFRAME_TO_NAUTILUS_BAR
+)
 import ema_lib
 import mt5_lib
 import order_lib
@@ -57,12 +60,12 @@ class BacktestStatistics:
                 f"For symbol {symbol} - trade signals: {self.signals_generated}, "
                 f"orders submitted: {self.orders_submitted}, "
                 f"positions closed: {positions_closed},\n"
-                f"{LOGGING_INDENT}positions closed by opposite signal: "
+                f"{LOGGING_INFO_INDENT}positions closed by opposite signal: "
                 f"{self.positions_closed_by_opposite_signal}, "
                 f"margin rejections: {self.margin_rejections}, "
                 f"backtest wind down closures: "
                 f"{self.backtest_wind_down_closures},\n"
-                f"{LOGGING_INDENT}PnL: "
+                f"{LOGGING_INFO_INDENT}PnL: "
                 f"{pnl_stats.get('PnL (total)'):.2f} {base_currency}, "
                 f"PnL(%): {pnl_stats.get('PnL% (total)'):.2f}%, "
                 f"win rate: {pnl_stats.get('Win Rate'):.2%}.\n"
@@ -305,12 +308,12 @@ class EMACross(Strategy):
         if adjustment.as_double() == 0:
             return
 
-        logging.debug(
-            f"Currency conversion adjustment: "
-            f"position={event.position_id}, "
-            f"pnl={event.realized_pnl}, "
-            f"adjustment={adjustment}"
-        )
+        # logging.debug(
+        #     f"Currency conversion adjustment: "
+        #     f"position={event.position_id}, "
+        #     f"pnl={event.realized_pnl}, "
+        #     f"adjustment={adjustment}"
+        # )
 
     def on_stop(self) -> None:
         positions = self.cache.positions_open(
@@ -462,17 +465,12 @@ def get_backtest_bars( #TODO see if this function can be avoided
     
 
 def get_conversion_symbol(
-    instrument: Instrument,
+    source_currency: str,
     account_currency: str,
-) -> str | None:
-    quote_currency = str(instrument.quote_currency)
-
-    if quote_currency == account_currency:
-        return None
-
+) -> str:
     # Use the available MT5 conversion pair. Nautilus handles any required inversion.
-    direct_symbol = f"{quote_currency}{account_currency}"
-    inverse_symbol = f"{account_currency}{quote_currency}"
+    direct_symbol = f"{source_currency}{account_currency}"
+    inverse_symbol = f"{account_currency}{source_currency}"
 
     if mt5.symbol_info(direct_symbol) is not None:
         return direct_symbol
@@ -482,12 +480,12 @@ def get_conversion_symbol(
 
     raise RuntimeError(
         f"No FX conversion pair found for "
-        f"{quote_currency}/{account_currency}. "
+        f"{source_currency}/{account_currency}. "
         f"Tried '{direct_symbol}' and '{inverse_symbol}'."
     )
 
 
-def load_exchange_rate_data(
+def load_conversion_data(
     symbol: str,
     symbol_configs: dict
 ) -> tuple[Instrument, list[QuoteTick]]:
@@ -530,10 +528,10 @@ def load_exchange_rate_data(
 
 def is_same_fx_pair(
     instrument: Instrument,
-    conversion_symbol: str,
+    symbol: str,
 ) -> bool:
-    conversion_base = conversion_symbol[:3]
-    conversion_quote = conversion_symbol[3:]
+    conversion_base = symbol[:3]
+    conversion_quote = symbol[3:]
 
     instrument_base = str(instrument.base_currency)
     instrument_quote = str(instrument.quote_currency)
@@ -542,6 +540,42 @@ def is_same_fx_pair(
         {instrument_base, instrument_quote}
         == {conversion_base, conversion_quote}
     )
+
+
+def add_conversion_symbol(
+    backtest_engine: BacktestEngine,
+    symbol_configs: dict,
+    source_currency: str,
+    account_currency: str,
+) -> BacktestEngine:
+    symbol  = get_conversion_symbol(
+        source_currency=source_currency,
+        account_currency=account_currency,
+    )
+
+    conversion_instrument, conversion_quotes = load_conversion_data(
+        symbol=symbol,
+        symbol_configs=symbol_configs,
+    )
+
+    instrument_already_exists = False
+    for instrument in backtest_engine.cache.instruments():
+        instrument_already_exists = instrument_already_exists or is_same_fx_pair(
+            instrument=instrument, symbol=symbol
+        )
+
+    instrument_already_exists = False
+    for instrument in backtest_engine.cache.instruments():
+        if is_same_fx_pair(instrument=instrument, symbol=symbol):
+            instrument_already_exists = True
+            break
+
+    if not instrument_already_exists:
+        backtest_engine.add_instrument(conversion_instrument)
+
+    backtest_engine.add_data(conversion_quotes)
+
+    return backtest_engine
 
 
 def run_symbol_backtest(
@@ -555,7 +589,7 @@ def run_symbol_backtest(
 ) -> None:
     symbol_info = mt5_lib.get_symbol_info(symbol)
 
-    instrument = create_instrument(symbol_info)
+    traded_instrument = create_instrument(symbol_info)
     contract_size = mt5_lib.get_trade_contract_size(symbol_info)
 
     candles_df = mt5_lib.collect_candlesticks(
@@ -572,17 +606,13 @@ def run_symbol_backtest(
 
     bar_time = MT5_TIMEFRAME_TO_NAUTILUS_BAR[symbol_configs["timeframe"]]
     bar_type = BarType.from_str(f"{symbol}.SIM-{bar_time}-LAST-EXTERNAL")
-    bars = get_backtest_bars(bar_type, instrument, ema_df)
+    bars = get_backtest_bars(bar_type, traded_instrument, ema_df)
 
-    exchange_rate_symbol  = get_conversion_symbol(
-        instrument=instrument,
-        account_currency=account_currency,
-    )
-    account_currency = Currency.from_str(account_currency)
+    account_currency_obj = Currency.from_str(account_currency)
 
     strategy = EMACross(
         EMACrossConfig(
-            instrument_id=instrument.id,
+            instrument_id=traded_instrument.id,
             symbol=symbol,
             risk_percentage=order_configs["risk_percentage_per_trade"],
             max_margin_utilisation=order_configs["max_margin_utilisation"],
@@ -590,26 +620,34 @@ def run_symbol_backtest(
             ema_df=ema_df,
             bar_type=bar_type,
             backtest_statistics=backtest_statistics,
-            account_currency=account_currency
+            account_currency=account_currency_obj
         ),
     )
 
-    backtest_engine.add_instrument(instrument)
+    backtest_engine.add_instrument(traded_instrument)
     backtest_engine.add_data(bars)
 
-    # TODO: FX commission works correctly for USD-based accounts, but not for non-USD ones
-    # implement USD-to-account-currency conversion for non-USD accounts.
-
-    if exchange_rate_symbol is not None:
-        exchange_rate_instrument, exchange_rate_quotes = load_exchange_rate_data(
-            symbol=exchange_rate_symbol,
+    if account_currency != FTMO_COMMISSION_CURRENCY:
+        add_conversion_symbol(
+            backtest_engine=backtest_engine,
             symbol_configs=symbol_configs,
+            source_currency=FTMO_COMMISSION_CURRENCY,
+            account_currency=account_currency
         )
 
-        if not is_same_fx_pair(instrument, exchange_rate_symbol):
-            backtest_engine.add_instrument(exchange_rate_instrument)
+    traded_quote_currency = str(traded_instrument.quote_currency)
+    if traded_quote_currency != account_currency:
+        add_conversion_symbol(
+            backtest_engine=backtest_engine,
+            symbol_configs=symbol_configs,
+            source_currency=traded_quote_currency,
+            account_currency=account_currency
+        )
 
-        backtest_engine.add_data(exchange_rate_quotes)
+    logging.debug(
+        f"Backtest instruments: "
+        f"{[str(i.id) for i in backtest_engine.cache.instruments()]}"
+    )
 
     backtest_engine.add_strategy(strategy)
 
@@ -673,13 +711,13 @@ def log_position_commissions(
         
         if isinstance(instrument, CurrencyPair):
             quantity_unit = str(instrument.base_currency)
-            commission_rate = "comm/lot"
+            commission_rate = "commission/lot"
             commission_rate_val = (
                 f"{commission_per_lot:.2f} {commission_currency}/lot"
             )
         elif isinstance(instrument, Cfd):
             quantity_unit = "contracts"
-            commission_rate = "comm/vol"
+            commission_rate = "commission/volume"
             commission_rate_val = (
                 f"{fee_model.cfd_commission_percent * Decimal('100'):.4f}%"
             )
@@ -688,15 +726,29 @@ def log_position_commissions(
             commission_rate = "N/A"
             commission_rate_val = "..."
 
+        position_indent = " " * 18
+
         logging.debug(
-            f"Pos {position.id}: "
-            f"qty = {position_size.as_decimal():.2f} {quantity_unit}, "
+            f"Position results: "
+            f"id = {position.id}, "
+            f"quantity = {position_size.as_decimal():.2f} {quantity_unit}, "
             f"lots = {lot_count:.4f}, "
             f"PnL = {position.realized_pnl.as_decimal():.2f} "
-            f"{position.realized_pnl.currency}, "
-            f"comm = {total_commission} {commission_currency}, "
+            f"{position.realized_pnl.currency},\n"
+            f"{LOGGING_DEBUG_INDENT}{position_indent}"
+            f"commission = {total_commission} {commission_currency}, "
             f"{commission_rate} = {commission_rate_val}"
         )
+
+
+def open_backtest_report_page(symbol: str, backtest_engine: BacktestEngine):
+    tearsheet_name = f".\\reports\\backtest_tearsheet_{symbol}.html"
+    create_tearsheet(
+        engine=backtest_engine,
+        output_path=tearsheet_name
+    )
+    report_path = os.path.realpath(tearsheet_name)
+    webbrowser.open(report_path)
 
 
 def run_backtest(
@@ -761,10 +813,8 @@ def run_backtest(
         )
         backtest_statistics.reset()
 
-        tearsheet_name = f".\\reports\\backtest_tearsheet_{symbol}.html"
-        create_tearsheet(
-            engine=backtest_engine,
-            output_path=tearsheet_name
-        )
-        report_path = os.path.realpath(tearsheet_name)
-        webbrowser.open(report_path)
+        if backtest_config["generate_backtest_report"]:
+            open_backtest_report_page(
+                symbol=symbol,
+                backtest_engine=backtest_engine
+            )
