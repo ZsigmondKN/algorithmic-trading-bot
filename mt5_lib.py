@@ -14,6 +14,10 @@ import pandas as pd
 from config import LOGIN_TIMEOUT, MAXIMUM_MT5_CANDLE_COUNT_PER_REQUEST
 
 
+class LoginError(RuntimeError):
+    pass
+
+
 def login(configs: dict[str, str]) -> None:
     account_username = configs["username"]
     account_server = configs["server"]
@@ -27,7 +31,7 @@ def login(configs: dict[str, str]) -> None:
     )
 
     if not login_success:
-        raise RuntimeError(
+        raise LoginError(
             "Failed to initialize MT5 with the provided login credentials."
         )
     logging.info("Connection established to MT5.")

@@ -69,12 +69,10 @@ if __name__ == "__main__":
         main()
     except KeyboardInterrupt:
         logging.info("Shutdown request by user.")
-    except Exception:
+    except mt5_lib.LoginError as e:
+        logging.error(e)
+    except Exception as e:
         logging.exception("Unhandled exception.")
-        # TODO for raised errors make the output nicer
-    finally:
-        try:
-            order_lib.cancel_all_pending_orders()
-        finally:
-            mt5.shutdown()
-            logging.info("Disconnected MT5.")
+        order_lib.cancel_all_pending_orders() 
+        mt5.shutdown()
+        logging.info("Disconnected MT5.")

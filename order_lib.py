@@ -249,7 +249,7 @@ def cancel_order(order_number: int) -> None:
         logging.info(f"Order {order_number} cancelled successfully")
 
     except Exception:
-        logging.exception(f"Unexpected error while cancelling order {order_number}.")
+        logging.error(f"Unexpected error while cancelling order {order_number}.")
         raise
 
 
