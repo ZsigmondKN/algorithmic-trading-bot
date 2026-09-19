@@ -169,7 +169,7 @@ def log_ema_crosses(ema_df: pd.DataFrame, verbose: bool = False) -> None:
     ema_df_cross = mt5_lib.split_date_time(ema_df_cross)
     if not verbose:
         ema_df_cross = ema_df_cross.drop(
-            columns=["high", "low", "tick_volume", "spread", "real_volume"]
+            columns=["high", "low", "spread", "real_volume"]
         )
         logging.info("EMA dataframe (concise):")
     else:

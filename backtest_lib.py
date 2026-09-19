@@ -445,24 +445,19 @@ def create_instrument(symbol_info: mt5.SymbolInfo) -> Instrument:
     )
 
 
-def get_backtest_bars( #TODO see if this function can be avoided
+def get_backtest_bars(
     bar_type: BarType,
     instrument: Instrument,
     ema_df: pd.DataFrame
 ) -> list[Bar]:
-    with warnings.catch_warnings():
-        warnings.filterwarnings(
-            "ignore",
-            message=(
-                "A value is being set on a copy of a "
-                "DataFrame or Series through chained assignment."
-            ),
-        )
+    bar_data = ema_df[
+        ["open", "high", "low", "close", "tick_volume"]
+    ].copy()
 
-        return BarDataWrangler(bar_type, instrument).process(
-            ema_df[["open", "high", "low", "close"]]
-        )
-    
+    bar_data = bar_data.rename(columns={"tick_volume": "volume"})
+
+    return BarDataWrangler(bar_type, instrument).process(bar_data)
+
 
 def get_conversion_symbol(
     source_currency: str,
@@ -564,7 +559,6 @@ def add_conversion_symbol(
             instrument=instrument, symbol=symbol
         )
 
-    instrument_already_exists = False
     for instrument in backtest_engine.cache.instruments():
         if is_same_fx_pair(instrument=instrument, symbol=symbol):
             instrument_already_exists = True
