@@ -120,8 +120,8 @@ def load_backtest_config() -> dict[str, Any]:
         "use_test_account": parse_bool(getenv_required("USE_TEST_ACCOUNT")),
         "test_backtest_balance": float(getenv_required("TEST_BACKTEST_BALANCE")),
         "test_backtest_currency": getenv_required("TEST_BACKTEST_CURRENCY"),
-        "generate_backtest_report": parse_bool(
-            getenv_required("GENERATE_BACKTEST_REPORT")
+        "generate_backtest_report_page": parse_bool(
+            getenv_required("GENERATE_BACKTEST_REPORT_PAGE")
         ),
     }
 

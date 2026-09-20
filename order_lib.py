@@ -8,7 +8,7 @@ from typing import Protocol, TypeVar, Any
 
 import MetaTrader5 as mt5
 
-from config import LOT_SIZE_CALCULATION_VALUE, ORDER_FULFILL_TIME, LOGGING_INFO_INDENT
+from config import LOGGING_DEBUG_INDENT, LOT_SIZE_CALCULATION_VALUE, ORDER_FULFILL_TIME
 import mt5_lib
 
 
@@ -35,7 +35,8 @@ def normalise_price_parameters(
 
 
 def validate_margin_requirement(
-    balance: float,
+    balance_amount: float,
+    balance_currency: str,
     max_margin_utilisation: float,
     symbol: str,
     lot_size: float,
@@ -58,15 +59,17 @@ def validate_margin_requirement(
             f"entry_price={entry_price}."
         )
 
-    margin_utilisation = required_margin / balance
+    margin_utilisation = required_margin / balance_amount
 
     if margin_utilisation > max_margin_utilisation:
+        alignment_indent = " " * 16
         logging.debug(
-            f"Trade rejected - max margin utilisation exceeded.\n"
-            f"{LOGGING_INFO_INDENT}Balance={balance:.2f} | "
-            f"Required margin={required_margin:.2f} | "
-            f"Required Margin utilisation={margin_utilisation:.2%} | "
-            f"Symbol={symbol}"
+            f"Trade rejected: "
+            f"max margin utilisation exceeded: "
+            f"current balance = {balance_amount:.2f} {balance_currency},\n"
+            f"{LOGGING_DEBUG_INDENT}{alignment_indent}"
+            f"required margin = {required_margin:.2f}, "
+            f"required margin utilisation = {margin_utilisation:.2%}"
         )
         return False
 
@@ -86,7 +89,8 @@ def normalise_lot_size(symbol_info: mt5.SymbolInfo, lot_size: float) -> float:
 
 
 def calculate_lot_size(
-    balance: float,
+    balance_amount: float,
+    balance_currency: str,
     risk_percentage: float,
     max_margin_utilisation: float,
     order_type: str,
@@ -124,12 +128,13 @@ def calculate_lot_size(
         )
         
     abs_loss_per_lot = -loss_per_lot
-    risk_amount = balance * risk_percentage
+    risk_amount = balance_amount * risk_percentage
     lot_size = risk_amount / abs_loss_per_lot
     lot_size = normalise_lot_size(symbol_info, lot_size)
 
     margin_requirements_met = validate_margin_requirement(
-        balance=balance,
+        balance_amount=balance_amount,
+        balance_currency=balance_currency,
         max_margin_utilisation=max_margin_utilisation,
         symbol=symbol,
         lot_size=lot_size,

@@ -57,18 +57,19 @@ class BacktestStatistics:
         pnl_stats = result.stats_pnls.get(base_currency, {})
         logging.info(
             (
-                f"For symbol {symbol} - trade signals: {self.signals_generated}, "
-                f"orders submitted: {self.orders_submitted}, "
-                f"positions closed: {positions_closed},\n"
+                f"{symbol} backtesting results: "
+                f"trade signals = {self.signals_generated}, "
+                f"orders submitted = {self.orders_submitted}, "
+                f"positions closed = {positions_closed},\n"
                 f"{LOGGING_INFO_INDENT}positions closed by opposite signal: "
                 f"{self.positions_closed_by_opposite_signal}, "
-                f"margin rejections: {self.margin_rejections}, "
+                f"margin rejections = {self.margin_rejections}, "
                 f"backtest wind down closures: "
                 f"{self.backtest_wind_down_closures},\n"
-                f"{LOGGING_INFO_INDENT}PnL: "
+                f"{LOGGING_INFO_INDENT}PnL = "
                 f"{pnl_stats.get('PnL (total)'):.2f} {base_currency}, "
-                f"PnL(%): {pnl_stats.get('PnL% (total)'):.2f}%, "
-                f"win rate: {pnl_stats.get('Win Rate'):.2%}.\n"
+                f"PnL(%) = {pnl_stats.get('PnL% (total)'):.2f}%, "
+                f"win rate = {pnl_stats.get('Win Rate'):.2%}.\n"
             )
         )
 
@@ -196,10 +197,13 @@ class EMACross(Strategy):
         stop_loss: float,
     ) -> Quantity | None:
         account = self.portfolio.account(self.config.instrument_id.venue)
-        balance = account.balance_total().as_double()
+        balance = account.balance_total()
+        balance_amount = balance.as_double()
+        balance_currency = balance.currency
 
         lot_size = order_lib.calculate_lot_size(
-            balance=balance,
+            balance_amount=balance_amount,
+            balance_currency=balance_currency,
             risk_percentage=self.config.risk_percentage,
             max_margin_utilisation=self.config.max_margin_utilisation,
             order_type=order_type,
@@ -224,6 +228,7 @@ class EMACross(Strategy):
     # TODO: Model dividend adjustments where applicable
     # TODO: Model symbol-specific trading hours / holidays / DST
     # TODO: Model slippage / volume-band execution
+    # TODO: Update to NautilusTrader v2 when the stable 2.x release is available.
 
     def buy(self, entry_price: float, stop_loss: float, take_profit: float) -> None:
         instrument = self.cache.instrument(self.config.instrument_id)
@@ -720,7 +725,7 @@ def log_position_commissions(
             commission_rate = "N/A"
             commission_rate_val = "..."
 
-        position_indent = " " * 18
+        alignment_indent = " " * 18
 
         logging.debug(
             f"Position results: "
@@ -729,7 +734,7 @@ def log_position_commissions(
             f"lots = {lot_count:.4f}, "
             f"PnL = {position.realized_pnl.as_decimal():.2f} "
             f"{position.realized_pnl.currency},\n"
-            f"{LOGGING_DEBUG_INDENT}{position_indent}"
+            f"{LOGGING_DEBUG_INDENT}{alignment_indent}"
             f"commission = {total_commission} {commission_currency}, "
             f"{commission_rate} = {commission_rate_val}"
         )
@@ -795,7 +800,7 @@ def run_backtest(
         backtest_engine.run()
 
         result = backtest_engine.get_result()
-        log_position_commissions(
+        log_position_commissions( # TODO could be nice to log how much was lost to fees
             backtest_engine=backtest_engine,
             fee_model=fee_model
         )
@@ -807,7 +812,7 @@ def run_backtest(
         )
         backtest_statistics.reset()
 
-        if backtest_config["generate_backtest_report"]:
+        if backtest_config["generate_backtest_report_page"]:
             open_backtest_report_page(
                 symbol=symbol,
                 backtest_engine=backtest_engine
